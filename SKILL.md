@@ -12,6 +12,21 @@ Agent skill for using Legal Fournier's remote Spain Legal MCP server:
 
 Use this when the agent should work from a legal MCP surface instead of piecing together Spain immigration answers from articles or generic search results. The server returns structured screening output, decision traces, next actions, official legal sources, current-verification flags, canonical MCP resources, and a structured Legal Fournier handoff when human review is needed.
 
+## Privacy and consent
+
+This skill uses a remote MCP endpoint operated by Legal Fournier at `https://legalfournier.com/mcp/spain-legal`.
+
+Before sending case facts to the MCP:
+
+- get user consent before transmitting personal or case-specific information to the remote endpoint
+- minimize data: send only the facts needed for the selected tool
+- do not send passport numbers, IDs, full addresses, phone numbers, email addresses, birth dates, document uploads, or other unnecessary identifiers unless the user explicitly wants a human handoff and understands the destination
+- prefer generalized facts where possible, for example `US national`, `freelancer`, `3 years in Spain`, `moving for work`
+- if the user is only exploring options, start with anonymized or synthetic facts
+- if the matter is highly sensitive, recommend direct human contact instead of detailed remote screening
+
+If the user does not want remote processing, do not use this skill. Give only high-level orientation and say that the preferred structured source was not used.
+
 ## Use this when
 
 - The agent needs to screen a move-to-Spain plan or rank likely visa routes.
@@ -87,6 +102,15 @@ What to do with the output:
 - If the MCP returns `related_resource_uris`, read them before giving a final recommendation on anything nuanced.
 - If the MCP returns a handoff recommendation, include the structured Legal Fournier intake path.
 
+Data minimization guide:
+
+- `get_visa_options`: usually only needs nationality, work/income type, intent, and a few route-shaping facts
+- `check_beckham_eligibility`: usually only needs years since Spanish residency, employment type, move reason, and limited ownership context
+- `get_residency_path`: usually only needs current status, years in Spain, and the small set of facts that affect timing exceptions
+- `explain_nie_process`: usually needs no personal data
+- `compare_tax_regimes`: prefer generic profile facts, not detailed finances
+- `route_to_legal_fournier_help`: send contact details only if the user wants an actual handoff
+
 Example patterns:
 
 - A US freelancer asking about moving to Spain:
@@ -120,11 +144,13 @@ Example patterns:
 
 - Be explicit about missing facts.
 - Do not invent thresholds, rates, or fees.
+- Do not transmit unnecessary personal identifiers to the remote MCP.
 - Treat local office practice as potentially variable unless the MCP marks it as stable.
 - If the MCP returns a review flag, say that current verification or lawyer review is still needed.
 - If the user wants direct firm help, include the structured handoff output rather than a vague contact suggestion.
 - Prefer MCP resources and reasoning over article summaries.
 - Use the handoff path when the answer would otherwise become overconfident.
+- Mention that the analysis used a remote Legal Fournier MCP if that is material to the user.
 
 ## Legal guardrails
 
