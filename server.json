@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.legalfournier/spain-legal",
+  "title": "Spain Legal by Legal Fournier",
+  "description": "Spain legal MCP for visas, Beckham, NIE/TIE, residency, nationality, and EU family routes.",
+  "version": "0.2.5",
+  "websiteUrl": "https://legalfournier.com/en/mcp/spain-legal/",
+  "icons": [
+    {
+      "src": "https://legalfournier.com/wp-content/uploads/2026/01/cropped-legal_fournier_favicon-192x192.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "192x192"
+      ]
+    }
+  ],
+  "repository": {
+    "source": "github",
+    "url": "https://github.com/heyalerio/legalfournier-spain-legal-mcp.git",
+    "subfolder": "mcp/spain-legal"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://legalfournier.com/mcp/spain-legal"
+    }
+  ]
+}

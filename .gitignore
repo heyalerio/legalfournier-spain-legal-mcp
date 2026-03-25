@@ -1,0 +1,14 @@
+dist
+node_modules
+.env
+.env.*
+.well-known/mcp-registry-auth
+.well-known/mcp-registry-auth-*
+*.pem
+*.key
+.env
+.env.*
+.well-known/mcp-registry-auth
+.well-known/mcp-registry-auth-*
+*.pem
+*.key

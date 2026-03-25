@@ -1,0 +1,61 @@
+{
+  "name": "legalfournier-spain-legal",
+  "version": "0.2.5",
+  "description": "Spain legal MCP for visa screening, Beckham eligibility, residency and nationality paths, NIE/TIE process guidance, EU family routes, and Legal Fournier handoff.",
+  "type": "module",
+  "license": "MIT",
+  "mcpName": "com.legalfournier/spain-legal",
+  "homepage": "https://legalfournier.com/en/mcp/spain-legal/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heyalerio/legalfournier-spain-legal-mcp.git",
+    "directory": "mcp/spain-legal"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "spain-legal",
+    "spain-immigration",
+    "spain-tax",
+    "beckham-law",
+    "digital-nomad-visa",
+    "residency",
+    "nationality",
+    "nie",
+    "tie",
+    "eu-family"
+  ],
+  "bin": {
+    "spain-legal": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "server.json"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run build && npm run test",
+    "dev": "tsx src/index.ts remote",
+    "dev:remote": "tsx src/index.ts remote",
+    "dev:stdio": "tsx src/index.ts stdio",
+    "generate:registry-auth": "./scripts/generate-http-auth.sh ./.well-known",
+    "start": "node dist/index.js remote",
+    "start:remote": "node dist/index.js remote",
+    "start:stdio": "node dist/index.js stdio",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}
