@@ -9,7 +9,7 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--base',default='http://127.0.0.1:39137')
 args=parser.parse_args()
 def call(path,body=None):
-    request=urllib.request.Request(args.base+path,data=None if body is None else json.dumps(body).encode(),headers={'Content-Type':'application/json','Accept':'application/json, text/event-stream'})
+    request=urllib.request.Request(args.base+path,data=None if body is None else json.dumps(body).encode(),headers={'Content-Type':'application/json','Accept':'application/json, text/event-stream','User-Agent':'LegalFournier-ReleaseVerification/0.3.0'})
     try:
         with urllib.request.urlopen(request,timeout=25) as response:return response.status,json.load(response)
     except urllib.error.HTTPError as error:return error.code,json.load(error)

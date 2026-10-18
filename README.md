@@ -49,6 +49,11 @@ HTTP defaults to `127.0.0.1:3137/mcp/spain-legal`. Both transports use the same
 input/output schemas. REST returns structured errors and appropriate status
 codes; native MCP returns protocol-compatible tool errors.
 
+Custom HTTP integrations should send a descriptive `User-Agent`. The site's
+browser-integrity filter rejects generic `Python-urllib` requests; the standard
+Node and Python HTTPX/MCP client signatures pass. The provided smoke checker
+identifies itself explicitly.
+
 ## Operations
 
 Production runs as `lf-spainlegal` with a root-owned release and a separate
