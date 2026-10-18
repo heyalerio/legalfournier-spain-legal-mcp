@@ -1,33 +1,27 @@
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { serveStdio, StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { createServer } from "./server.js";
 import { SERVER_NAME, SERVER_VERSION } from "./config.js";
+import { getTelemetryRecorder } from "./telemetry.js";
 
 export async function runStdioServer(): Promise<void> {
-  process.stdin.resume();
-
-  const server = createServer();
-  const transport = new StdioServerTransport();
-  const keepAlive = setInterval(() => undefined, 60_000);
-
-  const shutdown = async (exitCode = 0) => {
-    clearInterval(keepAlive);
-
-    try {
-      await server.close();
-    } catch {
-      // Ignore close-path failures during shutdown.
-    }
-
-    process.exit(exitCode);
+  const handle = serveStdio(createServer, {
+    legacy: "serve",
+    maxSubscriptions: 0,
+    transport: new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 100 * 1024 }),
+    onerror: () => { console.error("MCP stdio protocol error"); },
+  });
+  let closing = false;
+  const shutdown = async () => {
+    if (closing) return;
+    closing = true;
+    process.off("SIGTERM", shutdown);
+    process.off("SIGINT", shutdown);
+    await handle.close().catch(() => undefined);
+    await getTelemetryRecorder().flush();
   };
-
-  process.on("SIGTERM", () => {
-    void shutdown(0);
-  });
-  process.on("SIGINT", () => {
-    void shutdown(0);
-  });
-
-  await server.connect(transport);
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+  // The v2 transport closes on EOF; no keepalive should pin a disconnected process.
+  process.stdin.once("end", shutdown);
   console.error(`${SERVER_NAME} ${SERVER_VERSION} running on stdio`);
 }

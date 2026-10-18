@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fetchContent, getContentIndexStatus, searchContent, type PublishedContentDocument } from "./content-index.js";
+import { fetchContent, getContentIndexStatus, getVerifiedContentVideoIds, searchContent, type PublishedContentDocument } from "./content-index.js";
 
 let directory: string;
 let path: string;
@@ -80,6 +80,14 @@ describe("public content search", () => {
 });
 
 describe("snapshot publication boundary", () => {
+    it("provides every verified video for the App, including beyond the search page limit", () => {
+        const ids = Array.from({ length: 25 }, (_, index) => `video${String(index).padStart(6, "0")}`);
+        publish([article(1916), ...ids.map(id => article(1916, { id: `youtube:${id}`, type: "video", url: `https://www.youtube.com/watch?v=${id}`, related_article_ids: ["wp:post:1916"] }))]);
+        expect(searchContent({ type: "video", max_results: 20 }).resources).toHaveLength(20);
+        expect(getVerifiedContentVideoIds()).toEqual(ids);
+        publish([article(1916)]);
+        expect(getVerifiedContentVideoIds()).toEqual([]);
+    });
     it("replaces edited passages and removes withdrawn documents on reload", () => {
         publish([article(1916), article(2936, { title: "Former remote-work guidance" })]);
         expect(fetchContent({ id: "wp:post:1916" })?.text).toContain("Qualifying");

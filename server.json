@@ -2,9 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.legalfournier/spain-legal",
   "title": "Spain Legal by Legal Fournier",
-  "description": "Spain legal MCP for visas, residency, Beckham Law, NIE/TIE, nationality, tax, tools, and handoff.",
-  "version": "0.3.0",
+  "description": "Spain legal screening, articles, videos, interactive apps, public skills, and consent-based contact.",
+  "version": "0.4.0",
   "websiteUrl": "https://legalfournier.com/en/mcp/spain-legal/",
+  "repository": {
+    "url": "https://github.com/heyalerio/legalfournier-spain-legal-mcp",
+    "source": "github"
+  },
   "icons": [
     {
       "src": "https://legalfournier.com/wp-content/uploads/2026/01/cropped-legal_fournier_favicon-192x192.png",

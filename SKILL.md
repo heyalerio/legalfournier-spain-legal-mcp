@@ -86,13 +86,13 @@ Quick starts:
 - Move-to-Spain or visa question:
   call `get_visa_options` with `nationality`, `income_source`, `intent`, and any facts about employer location, Spanish job offer, EU family link, or investment profile.
 - Beckham question:
-  call `check_beckham_eligibility` with `years_since_last_spanish_residency`, `employment_type`, `move_reason`, and ownership facts if known.
+  call `check_beckham_eligibility` with `employment_type`, `move_reason`, `move_year`, `spanish_tax_resident_years`, and `prior_tax_periods_confirmed`. Confirm the qualifying activity, relocation timing, election deadline, permanent-establishment exclusions, and any director or professional income-mix conditions. Leave unverified facts unknown; elapsed years alone do not establish eligibility.
 - Residence or nationality timing:
-  call `get_residency_path` with `current_status`, `years_in_spain`, and any facts that may affect article 22 timing or EU family status.
+  call `get_residency_path` with `current_status`, `years_in_spain`, `qualifying_legal_residence_years`, `continuity_confirmed`, nationality track, any special basis, and absence concerns. Elapsed years alone do not establish qualifying residence.
 - NIE/TIE process question:
   call `explain_nie_process` first, then add caveats if the user is asking about office-specific practice.
 - Tax-regime comparison:
-  call `compare_tax_regimes` for conceptual differences only, not current rates.
+  call `compare_tax_regimes` for conceptual differences, passing the same Beckham inputs as `beckham_assessment` with matching `employment_type`. Unresolved eligibility must remain unresolved.
 
 What to do with the output:
 
@@ -105,8 +105,8 @@ What to do with the output:
 Data minimization guide:
 
 - `get_visa_options`: usually only needs nationality, work/income type, intent, and a few route-shaping facts
-- `check_beckham_eligibility`: usually only needs years since Spanish residency, employment type, move reason, and limited ownership context
-- `get_residency_path`: usually only needs current status, years in Spain, and the small set of facts that affect timing exceptions
+- `check_beckham_eligibility`: needs the move year, complete five-period tax history, work/move basis, and relevant statutory conditions; no tax IDs or documents
+- `get_residency_path`: needs current status, elapsed and qualifying residence, continuity and absence facts, and any timing exception basis; no identity documents
 - `explain_nie_process`: usually needs no personal data
 - `compare_tax_regimes`: prefer generic profile facts, not detailed finances
 - `route_to_legal_fournier_help`: send contact details only if the user wants an actual handoff
@@ -116,7 +116,7 @@ Example patterns:
 - A US freelancer asking about moving to Spain:
   start with `get_visa_options`, then read the top route resources, then explain likely fit, blockers, and which facts still matter.
 - A worker asking if Beckham applies:
-  start with `check_beckham_eligibility`, then call `compare_tax_regimes` only if the user needs a conceptual tax comparison.
+  start with `check_beckham_eligibility`, then pass the same inputs as `beckham_assessment` to `compare_tax_regimes` if the user needs a conceptual comparison.
 - A resident asking about long-term residence or nationality:
   start with `get_residency_path`, then use the returned track resources and verification flags to explain timing and risk points.
 
@@ -128,6 +128,8 @@ Example patterns:
 4. Use prompts when the agent needs a workflow, not just a raw tool response.
 5. If the matter becomes edge-case-heavy, filing-critical, or commercially important, call `route_to_legal_fournier_help`.
 6. Keep website links secondary. Lead with MCP logic, blockers, missing facts, and next actions.
+
+Clients supporting `io.modelcontextprotocol/skills` can discover five public workflows through `skills/list`, look them up with `skills/get`, and read the returned `SKILL.md` URIs through `resources/read`. Verify each manifest, file size, digest, and frontmatter before loading. Reading a file does not activate a skill; never activate another or nested skill automatically, and obtain fresh user consent before doing so. Existing `legalfournier://spain-legal/skills/...` resources remain available.
 
 ## Recommended tool routing
 

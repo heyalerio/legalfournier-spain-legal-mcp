@@ -1,8 +1,9 @@
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import { isIP } from "node:net";
 import express, { type Request, type Response, type NextFunction } from "express";
-import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { hostHeaderValidation } from "@modelcontextprotocol/express";
+import { createMcpHandler, isLegacyRequest } from "@modelcontextprotocol/server";
+import { NodeStreamableHTTPServerTransport, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
 import { getConfig, SERVER_NAME, SERVER_VERSION } from "./config.js";
 import { createServer } from "./server.js";
 import { getTelemetryRecorder, type TelemetryContext } from "./telemetry.js";
@@ -11,10 +12,27 @@ import { executeTool, REST_TOOL_ROUTES } from "./operations.js";
 import { type PublicToolName } from "./schemas.js";
 import { getContentIndexStatus } from "./content-index.js";
 
+const MAX_BODY_BYTES = 100 * 1024;
+export const DEFAULT_ALLOWED_ORIGINS = [
+  "https://legalfournier.com", "https://www.legalfournier.com",
+  "https://chatgpt.com", "https://chat.openai.com", "https://claude.ai",
+] as const;
+function validOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && url.origin === value;
+  } catch { return false; }
+}
+function allowedOriginSet(override?: string[]): Set<string> {
+  const configured = override ?? (process.env.LF_MCP_ALLOWED_ORIGINS === undefined
+    ? [...DEFAULT_ALLOWED_ORIGINS] : process.env.LF_MCP_ALLOWED_ORIGINS.split(/[\s,]+/).filter(Boolean));
+  if (configured.some(value => !validOrigin(value))) throw new Error("LF_MCP_ALLOWED_ORIGINS must contain exact HTTP(S) origins without paths or wildcards.");
+  return new Set(configured);
+}
 const REST_API_PATH = "/api/spain-legal";
 const REST_LEGAL_NOTICE = "Legal Fournier Spain Legal API screening responses are preliminary information for agents, not legal, tax, or filing advice. The contact-request endpoint is consequential and only submits when the user has explicitly consented to contact; do not include passport numbers, ID numbers, documents, full addresses, or sensitive personal facts.";
 export interface SpainLegalRemoteOverrides {
-  host?: string; port?: number; path?: string; allowedHosts?: string[]; corsOrigin?: string;
+  host?: string; port?: number; path?: string; allowedHosts?: string[]; allowedOrigins?: string[];
   maxConcurrent?: number; requestsPerMinute?: number;
 }
 export interface SpainLegalRemoteRuntime {
@@ -45,7 +63,14 @@ function sendRestError(res: Response, error: ApiError): void {
 }
 function sendRpcError(res: Response, error: ApiError, id: unknown = null): void {
   if (error.retryAfter) res.setHeader("Retry-After", error.retryAfter);
-  res.status(error.status).json({ jsonrpc: "2.0", error: { code: error.status === 400 ? -32602 : -32000, message: error.message, data: { code: error.code, ...error.details } }, id: typeof id === "string" || typeof id === "number" ? id : null });
+  // -32000 is legacy-only in the 2026 revision. Transport/policy failures use
+  // stable vendor codes outside the protocol-reserved server-error interval.
+  const code = error.code === "INVALID_JSON" ? -32700
+    : error.status === 400 ? -32602
+    : error.status === 405 ? -32601
+    : error.status === 500 ? -32603
+    : -33000 - error.status;
+  res.status(error.status).json({ jsonrpc: "2.0", error: { code, message: error.message, data: { code: error.code, ...error.details } }, id: typeof id === "string" || typeof id === "number" ? id : null });
 }
 function sendError(req: Request, res: Response, error: ApiError): void {
   if (res.headersSent) return;
@@ -71,6 +96,24 @@ export function createRemoteApp(overrides: SpainLegalRemoteOverrides = {}): Spai
   const endpointPath = overrides.path ?? base.mcpPath;
   const healthPath = `${endpointPath}/healthz`;
   const telemetry = getTelemetryRecorder();
+  const allowedOrigins = allowedOriginSet(overrides.allowedOrigins);
+  const markProtocolFailure = () => {
+    const context = telemetry.getContext();
+    if (context) context.operationFailed = true;
+  };
+  const modernHandler = createMcpHandler(createServer, {
+    legacy: "reject", maxSubscriptions: 0, maxRequestBodySize: MAX_BODY_BYTES,
+    onerror: markProtocolFailure,
+  });
+  const serveModern = toNodeHandler({ fetch: async (request, options) => {
+    const response = await modernHandler.fetch(request, options);
+    if (response.status >= 400) markProtocolFailure();
+    if (response.headers.get("content-type")?.includes("application/json")) {
+      const message = await response.clone().json().catch(() => null) as { error?: unknown; result?: { isError?: boolean } } | null;
+      if (message?.error || message?.result?.isError) markProtocolFailure();
+    }
+    return response;
+  } }, { maxRequestBodySize: MAX_BODY_BYTES, onerror: markProtocolFailure });
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", false);
@@ -124,15 +167,26 @@ export function createRemoteApp(overrides: SpainLegalRemoteOverrides = {}): Spai
     next();
   });
   app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("Access-Control-Allow-Origin", overrides.corsOrigin ?? base.mcpCorsOrigin);
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id, Last-Event-ID, MCP-Protocol-Version, X-Session-Id");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Expose-Headers", "Retry-After");
-    if (req.method === "OPTIONS") { res.status(204).end(); return; }
+    // Origin is an exact security boundary. Validate it before emitting any CORS grant.
+    res.vary("Origin");
+    res.setHeader("Cache-Control", "no-store");
+    const origin = req.headers.origin;
+    if (origin !== undefined && (typeof origin !== "string" || !validOrigin(origin) || !allowedOrigins.has(origin))) {
+      sendError(req, res, new ApiError("ORIGIN_NOT_ALLOWED", "This Origin is not allowed.", 403)); return;
+    }
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      const requestedHeaders = header(req.headers["access-control-request-headers"]) ?? "";
+      const parameterHeaders = requestedHeaders.length <= 2048 ? requestedHeaders.split(",").map(value => value.trim()).filter(value => /^mcp-param-[a-z0-9-]{1,128}$/i.test(value)).slice(0, 32) : [];
+      res.setHeader("Access-Control-Allow-Headers", ["Content-Type", "Accept", "Authorization", "Mcp-Session-Id", "Last-Event-ID", "MCP-Protocol-Version", "Mcp-Method", "Mcp-Name", "X-Session-Id", ...parameterHeaders].join(", "));
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Expose-Headers", "Retry-After, MCP-Protocol-Version");
+    }
     next();
   });
   app.use(hostHeaderValidation(overrides.allowedHosts ?? base.mcpAllowedHosts));
-  app.use(express.json({ limit: "100kb", strict: true }));
+  app.use((req, res, next) => { if (req.method === "OPTIONS") { res.status(204).end(); return; } next(); });
+  app.use(express.json({ limit: MAX_BODY_BYTES, strict: true }));
   for (const path of ["/healthz", healthPath, `${REST_API_PATH}/healthz`]) {
     app.get(path, (_req, res) => res.json({ status: "ok", name: SERVER_NAME, version: SERVER_VERSION, endpointPath, telemetry: telemetry.getStatus() }));
   }
@@ -176,8 +230,26 @@ export function createRemoteApp(overrides: SpainLegalRemoteOverrides = {}): Spai
     const context = res.locals.telemetryContext as TelemetryContext;
     context.rpcMethod = typeof req.body?.method === "string" ? req.body.method.slice(0, 100) : undefined;
     context.rpcTarget = typeof req.body?.params?.name === "string" ? req.body.params.name.slice(0, 260) : typeof req.body?.params?.uri === "string" ? req.body.params.uri.slice(0, 260) : undefined;
-    const server = createServer();
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    const probe = await toWebRequest(req, req.body, { maxRequestBodySize: MAX_BODY_BYTES });
+    // Use the SDK classifier so malformed modern claims cannot silently downgrade.
+    if (!await isLegacyRequest(probe, req.body, { maxRequestBodySize: MAX_BODY_BYTES })) {
+      try {
+        await telemetry.withContext(context, async () => {
+          await serveModern(req, res, req.body);
+          if (context.operationFailed && !context.operationRecorded && context.rpcTarget) {
+            const type = context.rpcMethod === "prompts/get" ? "prompt_call" : context.rpcMethod === "resources/read" ? "resource_read" : "tool_call";
+            await telemetry.recordOperation(type, context.rpcTarget, { durationMs: 0, success: false, errorMessage: "PROTOCOL_OR_INPUT_ERROR" });
+          }
+        });
+      } catch (error) {
+        context.operationFailed = true;
+        sendError(req, res, publicError(error));
+      }
+      return;
+    }
+    // Preserve the existing JSON-only, sessionless 2025 transport for old clients.
+    const server = createServer({ era: "legacy" });
+    const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     let closing = false;
     const close = async () => {
       if (closing) return; closing = true;
@@ -222,7 +294,7 @@ export function createRemoteApp(overrides: SpainLegalRemoteOverrides = {}): Spai
     const safe = parsed.type === "entity.too.large" ? new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the 100 KB limit.", 413) : parsed.type === "entity.parse.failed" ? new ApiError("INVALID_JSON", "Request body must be valid JSON.", 400) : publicError(error);
     sendError(req, res, safe);
   });
-  return { app, endpointPath, healthPath, closeSessions: async () => { shuttingDown = true; await Promise.allSettled([...activeRuntimes].map((close) => close())); await telemetry.flush(); } };
+  return { app, endpointPath, healthPath, closeSessions: async () => { shuttingDown = true; await Promise.allSettled([modernHandler.close(), ...[...activeRuntimes].map((close) => close())]); await telemetry.flush(); } };
 }
 
 export async function startRemoteServer(overrides: SpainLegalRemoteOverrides = {}): Promise<SpainLegalRemoteServer> {

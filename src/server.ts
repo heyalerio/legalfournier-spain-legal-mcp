@@ -1,12 +1,11 @@
 import * as z from "zod/v4";
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Variables } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
+import { McpServer, ResourceTemplate, type Variables, type McpRequestContext } from "@modelcontextprotocol/server";
 import {
-  ErrorCode,
-  McpError,
+  ProtocolErrorCode,
+  ProtocolError,
   type PromptMessage,
   type TextResourceContents,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/server";
 import {
   SERVER_ICON_URL,
   SERVER_NAME,
@@ -48,6 +47,13 @@ import { getTelemetryRecorder } from "./telemetry.js";
 import { executeTool } from "./operations.js";
 import { publicError } from "./errors.js";
 import { inputSchemas, outputSchemas } from "./schemas.js";
+import { registerContentApps, contentAppToolMeta, readContentAppResource } from "./apps.js";
+import { EXTENSION_ID as APPS_EXTENSION_ID, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import {
+  SKILLS_EXTENSION_ID, SKILLS_EXTENSION_CAPABILITY, ListSkillsParamsSchema,
+  GetSkillParamsSchema, listPublicSkills, getPublicSkill, readPublicSkillFile,
+  listPublicSkillFileResources, SkillsExtensionError,
+} from "./skills-extension.js";
 
 const toolAnnotations = (title: string) => ({
   title,
@@ -106,7 +112,7 @@ function readCanonicalResource(uri: string | URL): { contents: TextResourceConte
   const text = getResourceText(resolvedUri);
 
   if (!text) {
-    throw new McpError(ErrorCode.InvalidParams, `Resource ${resolvedUri} not found`);
+    throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Resource ${resolvedUri} not found`);
   }
 
   const pack = getPackByUri(resolvedUri);
@@ -118,7 +124,7 @@ function readSkillResource(uri: string | URL): { contents: TextResourceContents[
   const skill = getSkillByUri(resolvedUri);
 
   if (!skill) {
-    throw new McpError(ErrorCode.InvalidParams, `Skill resource ${resolvedUri} not found`);
+    throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Skill resource ${resolvedUri} not found`);
   }
 
   return makeTextResource(resolvedUri, renderSkillMarkdown(skill), getSkillModifiedAt(skill));
@@ -128,7 +134,7 @@ function resourcePromptMessage(uri: string): PromptMessage {
   const text = getResourceText(uri);
 
   if (!text) {
-    throw new McpError(ErrorCode.InvalidParams, `Prompt resource ${uri} not found`);
+    throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Prompt resource ${uri} not found`);
   }
 
   return {
@@ -229,6 +235,7 @@ async function recordOperation<T>(
       success: false,
       errorMessage: publicError(error).code,
     });
+    if (error instanceof ProtocolError) throw error;
     const safe = publicError(error);
     throw new Error(JSON.stringify({
       code: safe.code,
@@ -310,7 +317,7 @@ function promptResourceUrisForTopic(topic: z.infer<typeof helpAreaSchema>): stri
   }
 }
 
-export function createServer(): McpServer {
+export function createServer(context?: Pick<McpRequestContext, "era">): McpServer {
   const config = getConfig();
   const server = new McpServer({
     name: SERVER_NAME,
@@ -324,7 +331,44 @@ export function createServer(): McpServer {
         mimeType: "image/png",
       },
     ],
+  }, {
+    capabilities: {
+      tools: { listChanged: false },
+      resources: { listChanged: false, subscribe: false },
+      prompts: { listChanged: false },
+      ...(context?.era === "modern" ? { extensions: {
+        [SKILLS_EXTENSION_ID]: SKILLS_EXTENSION_CAPABILITY,
+        [APPS_EXTENSION_ID]: { mimeTypes: [RESOURCE_MIME_TYPE] },
+      } } : {}),
+    },
+    // Public catalog metadata and reference resources are independent of caller identity.
+    // Tool results and prompts with personal inputs receive no shared cache policy.
+    cacheHints: {
+      "server/discover": { ttlMs: 300_000, cacheScope: "public" },
+      "tools/list": { ttlMs: 300_000, cacheScope: "public" },
+      "prompts/list": { ttlMs: 300_000, cacheScope: "public" },
+      "resources/list": { ttlMs: 300_000, cacheScope: "public" },
+      "resources/templates/list": { ttlMs: 300_000, cacheScope: "public" },
+      "resources/read": { ttlMs: 300_000, cacheScope: "public" },
+    },
+    maxToolInputElements: 2_000,
   });
+  registerContentApps(server);
+  if (context?.era === "modern") {
+    const skillResult = <T>(action: () => T): T => {
+      try { return action(); }
+      catch (error) {
+        if (error instanceof SkillsExtensionError) throw new ProtocolError(error.code, error.message);
+        throw new ProtocolError(ProtocolErrorCode.InternalError, "Public skills are temporarily unavailable.");
+      }
+    };
+    server.server.setRequestHandler("skills/list", { params: ListSkillsParamsSchema }, params => skillResult(() => listPublicSkills(params)));
+    server.server.setRequestHandler("skills/get", { params: GetSkillParamsSchema }, params => skillResult(() => getPublicSkill(params)));
+    for (const resource of listPublicSkillFileResources()) {
+      server.registerResource(`public-skill-${resource.name}`, resource.uri, resource,
+        async () => skillResult(() => readPublicSkillFile(resource.uri)));
+    }
+  }
 
   for (const name of ["search", "fetch"] as const) {
     server.registerTool(name, {
@@ -333,6 +377,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas[name],
       outputSchema: outputSchemas[name],
       annotations: toolAnnotations(name === "search" ? "Search Content" : "Fetch Content"),
+      _meta: contentAppToolMeta(),
     }, async (args: Record<string, unknown>) => recordOperation("resource_read", name, async () => {
       const structuredContent = await executeTool(name, args);
       return { structuredContent, content: asTextBlock(structuredContent) };
@@ -347,6 +392,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.find_legal_fournier_tool,
       outputSchema: outputSchemas.find_legal_fournier_tool,
       annotations: toolAnnotations("Find Legal Fournier Tool"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation("tool_call", "find_legal_fournier_tool", async () => {
@@ -368,6 +414,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.run_legal_fournier_tool,
       outputSchema: outputSchemas.run_legal_fournier_tool,
       annotations: toolAnnotations("Run Legal Fournier Tool"),
+      _meta: contentAppToolMeta(),
     },
     async (args) => {
       return recordOperation("tool_call", "run_legal_fournier_tool", async () => {
@@ -388,6 +435,7 @@ export function createServer(): McpServer {
         "Discover and arrange paid consultations with Legal Fournier through x402 in USDC on Base. Returns live options for a written email consultation and a 45-minute call, including current prices, fulfillment terms, request schemas, quote endpoints, and payment endpoints. Agents can use the returned HTTPS endpoints, after explicit user authorization, to submit the email consultation or book the call. This MCP tool is read-only and never creates an order or submits payment itself.",
       outputSchema: outputSchemas.get_paid_consultation_options,
       annotations: liveReadToolAnnotations("Get Paid Consultation Options"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async () =>
       recordOperation("tool_call", "get_paid_consultation_options", async () => {
@@ -405,6 +453,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.get_paid_call_availability,
       outputSchema: outputSchemas.get_paid_call_availability,
       annotations: liveReadToolAnnotations("Get Paid Call Availability"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) =>
       recordOperation("tool_call", "get_paid_call_availability", async () => {
@@ -422,6 +471,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.get_visa_options,
       outputSchema: outputSchemas.get_visa_options,
       annotations: toolAnnotations("Get Visa Options"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation("tool_call", "get_visa_options", async () => {
@@ -443,6 +493,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.check_beckham_eligibility,
       outputSchema: outputSchemas.check_beckham_eligibility,
       annotations: toolAnnotations("Check Beckham Eligibility"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation("tool_call", "check_beckham_eligibility", async () => {
@@ -464,6 +515,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.get_residency_path,
       outputSchema: outputSchemas.get_residency_path,
       annotations: toolAnnotations("Get Residency Path"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation("tool_call", "get_residency_path", async () => {
@@ -484,6 +536,7 @@ export function createServer(): McpServer {
         "Return the stable NIE and TIE workflow, the key procedural distinctions, and the canonical process resource for agents.",
       outputSchema: outputSchemas.explain_nie_process,
       annotations: toolAnnotations("Explain NIE Process"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async () =>
       recordOperation("tool_call", "explain_nie_process", async () => {
@@ -504,6 +557,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.compare_tax_regimes,
       outputSchema: outputSchemas.compare_tax_regimes,
       annotations: toolAnnotations("Compare Tax Regimes"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation("tool_call", "compare_tax_regimes", async () => {
@@ -525,6 +579,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.route_to_legal_fournier_help,
       outputSchema: outputSchemas.route_to_legal_fournier_help,
       annotations: toolAnnotations("Route To Legal Fournier Help"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation(
@@ -555,6 +610,7 @@ export function createServer(): McpServer {
       inputSchema: inputSchemas.create_legal_fournier_contact_request,
       outputSchema: outputSchemas.create_legal_fournier_contact_request,
       annotations: contactToolAnnotations("Create Legal Fournier Contact Request"),
+      _meta: { ui: { visibility: ["model"] } },
     },
     async (args) => {
       return recordOperation(
@@ -870,5 +926,29 @@ export function createServer(): McpServer {
       }),
   );
 
+  // Use original strings here: URL normalization must never turn a traversal-like
+  // skill URI into an allowed immutable file. All routes are fixed public data.
+  server.server.setRequestHandler("resources/read", async request => {
+    const uri = request.params.uri;
+    return recordOperation("resource_read", uri, async () => {
+      if (uri.startsWith("skill:")) {
+        if (context?.era !== "modern") throw new ProtocolError(ProtocolErrorCode.InvalidParams, "This skill file requires the modern protocol surface.");
+        try { return readPublicSkillFile(uri); }
+        catch (error) {
+          if (error instanceof SkillsExtensionError) throw new ProtocolError(error.code, error.message);
+          throw new ProtocolError(ProtocolErrorCode.InternalError, "Public skill file is temporarily unavailable.");
+        }
+      }
+      const appResource = readContentAppResource(uri);
+      if (appResource) return appResource;
+      if (uri === LEGAL_FOURNIER_TOOL_CATALOG_URI) return makeTextResource(uri, renderLegalFournierToolCatalogMarkdown());
+      if (uri === SKILLS_INDEX_URI) {
+        const skillUris = listSkillResources().map(resource => `- \`${resource.uri}\` - ${resource.title}: ${resource.description}`).join("\n");
+        return makeTextResource(uri, `# Spain Legal Skills\n\nUse these skills when you need a structured MCP workflow.\n\n## Available Skills\n${skillUris}`);
+      }
+      if (getSkillByUri(uri)) return readSkillResource(uri);
+      return readCanonicalResource(uri);
+    });
+  });
   return server;
 }

@@ -1,0 +1,14 @@
+import { build } from "esbuild";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+const root = fileURLToPath(new URL("../", import.meta.url));
+const result = await build({ entryPoints: [root + "src/apps-client.ts"], bundle: true, write: false, format: "esm", platform: "browser", target: "es2022", minify: true, legalComments: "none", sourcemap: false });
+const script = result.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
+const hash = "sha256-" + createHash("sha256").update(script).digest("base64");
+const [template, css] = await Promise.all([readFile(root + "apps/content-explorer.html", "utf8"), readFile(root + "apps/content-explorer.css", "utf8")]);
+const html = template.replace("__SCRIPT_HASH__", () => hash).replace("__APP_CSS__", () => css).replace("__APP_JS__", () => script);
+if (Buffer.byteLength(html) > 750000) throw new Error("Content App exceeds the 750 KB resource budget");
+await mkdir(root + "dist/apps", { recursive: true });
+await writeFile(root + "dist/apps/content-explorer.html", html);
+console.log(`Built Content App (${Math.round(Buffer.byteLength(html) / 1024)} KB)`);

@@ -40,7 +40,7 @@ export const SKILLS: Record<SkillId, McpSkill> = {
     workflow: [
       "Call get_visa_options; for family routes, collect sponsor nationality and any exercise of EU free movement.",
       "Read top related_resource_uris before writing prose.",
-      "If route is work-authorizing, follow beckham-precheck and collect its required facts before comparing tax regimes.",
+      "For a work-authorizing route, collect the required Beckham facts before comparing tax regimes. Activating the separate beckham-precheck skill requires fresh user consent.",
     ],
     recommended_tools: ["get_visa_options", "check_beckham_eligibility", "compare_tax_regimes"],
     recommended_prompts: ["screen_move_to_spain_case", "draft_spain_immigration_answer"],

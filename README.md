@@ -9,6 +9,23 @@ filing-sensitive or incomplete cases require a qualified review.
 - Server card: https://legalfournier.com/.well-known/mcp/server-card.json
 - Readiness: https://legalfournier.com/mcp/spain-legal/readyz
 
+## Protocol and interactive clients
+
+Version 0.4.0 serves MCP `2026-07-28` and retains support for the 2025-era
+initialization handshake over HTTP and stdio. Modern clients can call
+`server/discover` directly. Public tool/resource catalogs use explicit five-minute
+cache hints; case-specific responses are not shared-cacheable.
+
+Clients supporting MCP Apps can browse articles and videos inside the chat and
+check digital-nomad income against the existing server calculator.
+The same tools still return text and structured data to other clients. Videos
+load only after a click, with a YouTube link available when a host blocks embeds.
+The official Skills extension exposes five public legal workflows with
+integrity manifests; existing resource URIs remain available.
+
+See [protocol compatibility](docs/protocol-compatibility.md),
+[Apps](docs/mcp-apps.md), and [Skills](docs/mcp-skills.md).
+
 ## Tools
 
 `search` and `fetch` retrieve published articles, verified embedded-video metadata,
@@ -70,7 +87,7 @@ trust arbitrary forwarded headers. Default application limits are 32 concurrent
 requests and 120 requests per minute per verified client IP.
 
 Other configuration: `LF_MCP_HOST`, `LF_MCP_PORT`, `LF_MCP_PATH`,
-`LF_MCP_PUBLIC_URL`, `LF_MCP_ALLOWED_HOSTS`, `LF_MCP_CORS_ORIGIN`,
+`LF_MCP_PUBLIC_URL`, `LF_MCP_ALLOWED_HOSTS`, `LF_MCP_ALLOWED_ORIGINS`,
 `LF_SITE_BASE_URL`, `LF_CONTACT_URL`, `LF_HOMEPAGE_URL`,
 `LF_MCP_TELEMETRY_ENABLED`, `LF_AGENT_COMMERCE_BASE_URL`,
 `LF_AGENT_LEAD_ENDPOINT`, and `LF_AGENT_LEAD_SECRET`. Keep the signing secret
@@ -82,3 +99,15 @@ Version 0.3.0 starts from the internal TypeScript source that rebuilt byte for
 byte to production 0.2.17, except its version constant. This recovers the source
 changes missing from the old public 0.2.5 repository. Generated discovery
 schemas are rebuilt from the same native tool definitions used at runtime.
+
+Version 0.4.0 adds the current MCP protocol, backward compatibility, browser
+origin validation, Apps and the official Skills extension. After deployment,
+publish the matching `server.json` to the MCP Registry using the existing
+domain key, then verify the public release:
+
+```sh
+python3 scripts/smoke-readonly.py --base https://legalfournier.com --public-metadata --registry
+```
+
+The daily `Public MCP release verification` workflow runs that same read-only
+check. Registry publishing credentials remain outside the application and CI.
