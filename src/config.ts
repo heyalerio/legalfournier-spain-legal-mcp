@@ -8,6 +8,11 @@ export interface SpainLegalConfig {
   mcpPublicUrl: string;
   mcpAllowedHosts: string[];
   mcpCorsOrigin: string;
+  telemetryEnabled: boolean;
+  telemetryDir: string;
+  agentCommerceBaseUrl: string;
+  agentLeadEndpoint: string;
+  agentLeadSecret: string;
 }
 
 const DEFAULT_SITE_BASE_URL = "https://legalfournier.com";
@@ -23,6 +28,28 @@ const DEFAULT_MCP_ALLOWED_HOSTS = [
   "localhost",
 ];
 const DEFAULT_MCP_CORS_ORIGIN = "*";
+const DEFAULT_TELEMETRY_DIR = "data/telemetry";
+const DEFAULT_AGENT_COMMERCE_BASE_URL = "https://legalfournier.com";
+const DEFAULT_AGENT_LEAD_ENDPOINT =
+  "https://legalfournier.com/wp-json/legal-fournier/v1/agent-lead";
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  return fallback;
+}
 
 function parseInteger(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -74,13 +101,20 @@ export function getConfig(): SpainLegalConfig {
       process.env.LF_MCP_PUBLIC_URL ?? `${DEFAULT_SITE_BASE_URL}${mcpPath}`,
     mcpAllowedHosts: parseAllowedHosts(process.env.LF_MCP_ALLOWED_HOSTS),
     mcpCorsOrigin: process.env.LF_MCP_CORS_ORIGIN ?? DEFAULT_MCP_CORS_ORIGIN,
+    telemetryEnabled: parseBoolean(process.env.LF_MCP_TELEMETRY_ENABLED, true),
+    telemetryDir: process.env.LF_MCP_TELEMETRY_DIR ?? DEFAULT_TELEMETRY_DIR,
+    agentCommerceBaseUrl:
+      process.env.LF_AGENT_COMMERCE_BASE_URL ?? DEFAULT_AGENT_COMMERCE_BASE_URL,
+    agentLeadEndpoint:
+      process.env.LF_AGENT_LEAD_ENDPOINT ?? DEFAULT_AGENT_LEAD_ENDPOINT,
+    agentLeadSecret: process.env.LF_AGENT_LEAD_SECRET ?? "",
   };
 }
 
 export const SERVER_NAME = "com.legalfournier/spain-legal";
 export const SERVER_TITLE = "Spain Legal by Legal Fournier";
-export const SERVER_VERSION = "0.2.5";
+export const SERVER_VERSION = "0.3.0";
 export const SERVER_DESCRIPTION =
-  "Spain legal MCP for visa screening, Beckham eligibility, residency and nationality paths, NIE/TIE process guidance, EU family routes, and structured Legal Fournier handoff with official Spanish legal sources.";
+  "Spain legal MCP for visa screening, Beckham eligibility, residency and nationality paths, NIE/TIE process guidance, EU family routes, live paid-consultation discovery and call availability, Legal Fournier tool screeners, structured handoff, and explicit-consent contact requests with official Spanish legal sources.";
 export const SERVER_ICON_URL =
   "https://legalfournier.com/wp-content/uploads/2026/01/cropped-legal_fournier_favicon-192x192.png";

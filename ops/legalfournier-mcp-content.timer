@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the public MCP content index every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+Unit=legalfournier-mcp-content.service
+
+[Install]
+WantedBy=timers.target

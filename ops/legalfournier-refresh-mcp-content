@@ -1,0 +1,5 @@
+#!/bin/sh
+# Fixed service only; no caller-supplied arguments or environment values.
+set -eu
+[ "$#" -eq 0 ] || exit 64
+exec /usr/bin/systemctl start --no-block legalfournier-mcp-content.service

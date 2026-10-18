@@ -13,6 +13,8 @@ export interface CurrentVerificationFlag extends Record<string, unknown> {
 }
 
 type OfficialSourceId =
+  | "rd1155_spanish_family"
+  | "sem2_2025_spanish_family"
   | "rd1155_non_lucrative"
   | "rd1155_employee"
   | "rd1155_self_employed"
@@ -55,6 +57,8 @@ type VerificationFlagId =
   | "current_fees";
 
 const OFFICIAL_SOURCES: Record<OfficialSourceId, OfficialLegalSource> = {
+  rd1155_spanish_family:{authority:"BOE",title:"Real Decreto 1155/2024, arts. 93–99",url:"https://www.boe.es/buscar/act.php?id=BOE-A-2024-24099",relevance:"Separate residence regime for family members of Spanish nationals, effective from 20 May 2025."},
+  sem2_2025_spanish_family:{authority:"Secretaría de Estado de Migraciones",title:"Instrucciones SEM 2/2025",url:"https://inclusion.gob.es/documents/d/migraciones/instrucciones-sem-2-2025-sobre-la-residencia-temporal-de-familiares-de-personas-con-nacionalidad-espanola",relevance:"Distinguishes Spanish-national-family residence and returning sponsors' EU free-movement alternatives, including transitional cases."},
   rd1155_non_lucrative: {
     authority: "BOE",
     title: "Real Decreto 1155/2024, arts. 61-63",

@@ -1,0 +1,12 @@
+/var/lib/lf-spainlegal/telemetry/events-*.jsonl {
+    daily
+    maxsize 10M
+    rotate 7
+    maxage 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su lf-spainlegal lf-spainlegal
+}

@@ -1,54 +1,79 @@
-# Spain Legal MCP
+# Spain Legal by Legal Fournier
 
-Public MCP server for Spain immigration and tax guidance by Legal Fournier.
+Public MCP and REST screening service for Spanish immigration, residence,
+nationality, tax, property and business questions. Screening is preliminary;
+filing-sensitive or incomplete cases require a qualified review.
 
-- Website: https://legalfournier.com
-- MCP endpoint: `https://legalfournier.com/mcp/spain-legal`
-- Registry id: `com.legalfournier/spain-legal`
-- MCP documentation: https://legalfournier.com/en/mcp/spain-legal/
+- MCP: https://legalfournier.com/mcp/spain-legal
+- REST OpenAPI: https://legalfournier.com/.well-known/openapi/spain-legal-api.json
+- Server card: https://legalfournier.com/.well-known/mcp/server-card.json
+- Readiness: https://legalfournier.com/mcp/spain-legal/readyz
 
 ## Tools
 
-- `get_visa_options`
-- `check_beckham_eligibility`
-- `get_residency_path`
-- `explain_nie_process`
-- `compare_tax_regimes`
-- `route_to_legal_fournier_help`
+`search` and `fetch` retrieve published articles, verified embedded-video metadata,
+and canonical guidance. Results include citation URLs and source dates. The
+hourly publisher reads public WordPress content; the MCP holds no WordPress or
+Metricool credentials. Retrieved text is untrusted reference material, never
+instructions to an agent. Transcripts are not invented. See
+[content synchronization](docs/content-index.md).
 
-## Prompts
+Screening tools: `find_legal_fournier_tool`, `run_legal_fournier_tool`,
+`get_visa_options`, `check_beckham_eligibility`, `get_residency_path`,
+`explain_nie_process`, `compare_tax_regimes`, and `route_to_legal_fournier_help`.
+Use explicit income currency/period/family counts and property location/type.
+Missing eligibility evidence returns a review requirement. See
+[legal maintenance and supported calculations](docs/legal-screening-maintenance.md).
 
-- `screen_move_to_spain_case`
-- `draft_spain_immigration_answer`
-- `audit_spain_case_risks`
-- `prepare_legal_fournier_handoff`
+`get_paid_consultation_options` and `get_paid_call_availability` are read-only.
+`create_legal_fournier_contact_request` is consequential: it requires explicit
+user consent and submits a signed, idempotent contact request. A timeout does
+not mean failure; keep the returned operation key when retrying. Never send
+passport numbers, identity documents or unrelated sensitive information.
 
-## Resources
+## Development
 
-- `legalfournier://spain-legal/catalog`
-- `legalfournier://spain-legal/routes/{route_id}`
-- `legalfournier://spain-legal/processes/{process_id}`
-- `legalfournier://spain-legal/tracks/{track_id}`
-- `legalfournier://spain-legal/topics/{topic_id}`
+Use Node 22.23.3 (see `.nvmrc`).
 
-## Notes
-
-- Transport: `streamable-http`
-- Mode: read-only tools for screening and handoff
-
-## Run Locally
-
-```bash
-npm install
-npm run build
-npm run test
-npm run dev
+```sh
+npm ci --ignore-scripts
+npm run check
+python3 -m unittest discover -s scripts -p 'test_content_sync.py'
+php -n ops/test-wordpress-idempotency.php
+npm audit --omit=dev
+npm run discovery:generate
 ```
 
-Local stdio mode:
+Start HTTP with `npm start`, or stdio with `npm run start:stdio`.
+HTTP defaults to `127.0.0.1:3137/mcp/spain-legal`. Both transports use the same
+input/output schemas. REST returns structured errors and appropriate status
+codes; native MCP returns protocol-compatible tool errors.
 
-```bash
-npm run dev:stdio
-```
+## Operations
 
+Production runs as `lf-spainlegal` with a root-owned release and a separate
+publisher user. Preserve the service sandbox and WordPress isolation. Service
+and proxy examples are in `ops/`; deploy them with backups and syntax checks.
+The MCP uses `LF_CONTENT_INDEX_PATH` for its read-only content snapshot and
+`LF_MCP_TELEMETRY_DIR` for bounded operational telemetry. Liveness is `/healthz`;
+readiness adds index freshness and telemetry health. Missing content fails
+readiness; stale content remains explicitly marked.
 
+Only loopback Nginx may supply `X-LF-Verified-Client-IP`. The supplied proxy
+configuration validates Cloudflare peers before deriving that header. Do not
+trust arbitrary forwarded headers. Default application limits are 32 concurrent
+requests and 120 requests per minute per verified client IP.
+
+Other configuration: `LF_MCP_HOST`, `LF_MCP_PORT`, `LF_MCP_PATH`,
+`LF_MCP_PUBLIC_URL`, `LF_MCP_ALLOWED_HOSTS`, `LF_MCP_CORS_ORIGIN`,
+`LF_SITE_BASE_URL`, `LF_CONTACT_URL`, `LF_HOMEPAGE_URL`,
+`LF_MCP_TELEMETRY_ENABLED`, `LF_AGENT_COMMERCE_BASE_URL`,
+`LF_AGENT_LEAD_ENDPOINT`, and `LF_AGENT_LEAD_SECRET`. Keep the signing secret
+in the private service environment; never commit it.
+
+## Release provenance
+
+Version 0.3.0 starts from the internal TypeScript source that rebuilt byte for
+byte to production 0.2.17, except its version constant. This recovers the source
+changes missing from the old public 0.2.5 repository. Generated discovery
+schemas are rebuilt from the same native tool definitions used at runtime.

@@ -1,4 +1,10 @@
-import { EU_EEA_SWISS_ALIASES, SITE_URLS } from "./data/site.js";
+import {resolveNationality, type NationalityClassification} from "./data/nationality.js";
+import {
+  getContactUrl,
+  getConsultationBookingUrl,
+  SITE_URLS,
+  withMcpAttribution,
+} from "./data/site.js";
 import { REPRESENTATION_NOTICE } from "./data/notices.js";
 import {
   type SecondaryReference,
@@ -34,6 +40,8 @@ export type MoveReason =
   | "startup_or_innovation"
   | "intragroup_transfer"
   | "family_move"
+  | "director_appointment"
+  | "qualifying_professional_activity"
   | "other";
 export type CurrentStatus =
   | "new_arrival"
@@ -74,9 +82,21 @@ export type HelpArea =
   | "residency_path"
   | "nie_tie"
   | "tax_regimes"
-  | "nationality";
+  | "nationality"
+  | "spanish_family_route"
+  | "property"
+  | "business"
+  | "wealth"
+  | "inheritance"
+  | "appointments"
+  | "other";
 export type HelpUrgency = "normal" | "soon" | "urgent";
+export type HandoffLanguage = "en" | "es" | "fr";
 export type ToolName =
+  | "find_legal_fournier_tool"
+  | "run_legal_fournier_tool"
+  | "get_paid_consultation_options"
+  | "get_paid_call_availability"
   | "get_visa_options"
   | "check_beckham_eligibility"
   | "get_residency_path"
@@ -104,7 +124,7 @@ export interface RankedRoute extends Record<string, unknown> {
 
 export interface VisaOptionsResult extends Record<string, unknown> {
   profile_summary: string;
-  nationality_classification: "eu_eea_swiss" | "non_eu";
+  nationality_classification: NationalityClassification;
   decision_trace: DecisionTraceItem[];
   key_rules_applied: string[];
   review_level: ReviewLevel;
@@ -334,7 +354,8 @@ function packVerificationFlags(
 }
 
 export function isEuEeaSwissNationality(nationality: string): boolean {
-  return EU_EEA_SWISS_ALIASES.has(normalizeKey(nationality));
+  const nationalityClass = resolveNationality(nationality).classification;
+  return nationalityClass === "eu_eea_swiss" || nationalityClass === "spanish";
 }
 
 function buildRoute(
@@ -456,8 +477,12 @@ export function getVisaOptions(args: {
   has_eu_family_link?: boolean;
   eu_family_relationship?: EuFamilyRelationship;
   investment_profile?: "passive_capital" | "operating_business" | "none";
+  sponsor_nationality?: string;
+  sponsor_exercised_free_movement?: boolean;
 }): VisaOptionsResult {
-  const isEu = isEuEeaSwissNationality(args.nationality);
+  const nationalityClass = resolveNationality(args.nationality).classification;
+  const isEu = nationalityClass === "eu_eea_swiss";
+  const sponsor = resolveNationality(args.sponsor_nationality).classification;
   const ranked: RankedRoute[] = [];
   const decisionTrace: DecisionTraceItem[] = [];
   const generalNotes = [
@@ -472,6 +497,22 @@ export function getVisaOptions(args: {
     },
   ];
   const relatedResourceUris = [makeTopicResourceUri("route-selection")];
+  if (nationalityClass === "unknown" || nationalityClass === "spanish") {
+    const spanish = nationalityClass === "spanish";
+    return {
+      profile_summary: spanish ? "Spanish citizen relocating to Spain." : "Nationality could not be resolved safely.",
+      nationality_classification: nationalityClass,
+      decision_trace: [{factor:"nationality", finding:spanish ? "Spanish citizenship supplied." : "Missing, unrecognized or ambiguous nationality.", impact:spanish ? "A Spanish citizen does not need a third-country visa or a foreign EU registration certificate." : "No immigration regime is inferred until citizenship is clarified."}],
+      key_rules_applied: spanish ? ["Spanish citizens have their own nationality status in Spain; foreigner registration routes are not applicable to the citizen."] : [],
+      review_level: spanish ? "low" : "high",
+      official_legal_sources: [], current_verification_flags: [], ranked_routes: [], ruled_out_routes: ruledOutRoutes,
+      general_notes: spanish ? ["A non-Spanish family member needs a separate application and sponsor/free-movement review."] : ["Supply one unambiguous nationality using a country name or ISO alpha-2/alpha-3 code. Assess multiple citizenships separately."],
+      next_actions: spanish ? ["Review any non-Spanish family member separately; prepare ordinary civil and municipal registration as applicable."] : ["Confirm the applicant's citizenship before selecting a visa route."],
+      suggested_follow_up_tools: spanish ? [] : ["route_to_legal_fournier_help"],
+      related_resource_uris: relatedResourceUris, references: packReferences(relatedResourceUris),
+    };
+  }
+
 
   decisionTrace.push({
     factor: "nationality",
@@ -543,32 +584,23 @@ export function getVisaOptions(args: {
   }
 
   if (args.has_eu_family_link) {
-    const familyFit: FitLevel =
-      args.eu_family_relationship === "spouse_or_registered_partner" ||
-      args.eu_family_relationship === "child_or_dependent_parent"
-        ? "strong"
-        : "possible";
-    const familyScore =
-      args.eu_family_relationship === "spouse_or_registered_partner" ||
-      args.eu_family_relationship === "child_or_dependent_parent"
-        ? 99
-        : 87;
-
-    ranked.push(
-      buildRoute(
-        ROUTE_DEFINITIONS["eu-family-member-card"],
-        familyFit,
-        familyScore,
-        [
-          "A non-EU applicant with a qualifying EU-family theory may belong in the community-regime family-card route instead of a standard third-country route.",
-          args.eu_family_relationship && args.eu_family_relationship !== "unknown"
-            ? `The provided family relationship (${args.eu_family_relationship}) is consistent with an EU-family route screen, subject to proof and residence-basis review.`
-            : "The exact family relationship still needs to be checked before the community-regime route can be treated as filing-ready.",
-        ],
-        "Confirm the exact family relationship, the EU citizen's residence basis in Spain, and whether any retention-of-right issue is in play before choosing another route.",
-      ),
-    );
-    relatedResourceUris.push(makeRouteResourceUri("eu-family-member-card"));
+    const knownRelationship = args.eu_family_relationship && args.eu_family_relationship !== "unknown";
+    if (sponsor === "spanish" && args.sponsor_exercised_free_movement !== undefined) {
+      ranked.push(buildRoute(ROUTE_DEFINITIONS["spanish-national-family"], knownRelationship ? "strong" : "possible", knownRelationship ? 99 : 87,
+        ["A separate residence route for qualifying relatives of Spanish nationals applies under RD 1155/2024, articles 93–99.", args.sponsor_exercised_free_movement ? "A returning Spanish sponsor may also support an EU-family option if the earlier free-movement residence meets the applicable conditions." : "The Spanish sponsor has not exercised free movement, so the EU-family card is not assumed to be the default."],
+        "Check the exact family category, dependency where required, sponsor's Spanish nationality, residence history and filing location."));
+      relatedResourceUris.push(makeRouteResourceUri("spanish-national-family"));
+    }
+    if (sponsor === "eu_eea_swiss" || (sponsor === "spanish" && args.sponsor_exercised_free_movement === true)) {
+      ranked.push(buildRoute(ROUTE_DEFINITIONS["eu-family-member-card"], knownRelationship ? "strong" : "possible", knownRelationship ? 98 : 86,
+        ["The sponsor nationality supports an EU-family route screen, subject to the precise relationship and qualifying residence basis.", ...(sponsor === "spanish" ? ["The EU route requires evidence of qualifying prior residence under free-movement law; it is an alternative to the Spanish-national-family route."] : [])],
+        "Verify relationship evidence and the sponsor's qualifying residence basis before choosing the family-card procedure."));
+      relatedResourceUris.push(makeRouteResourceUri("eu-family-member-card"));
+    }
+    if (sponsor === "unknown" || (sponsor === "spanish" && args.sponsor_exercised_free_movement === undefined)) {
+      generalNotes.push("The family route remains unresolved. Supply the sponsor's nationality and, for a Spanish sponsor, whether qualifying free movement was exercised. No EU-family card is assumed from the family flag alone.");
+    }
+    if (sponsor === "non_eu") generalNotes.push("The sponsor is not Spanish or EU/EEA/Swiss. Check ordinary family reunification separately; the EU-family flag does not establish eligibility.");
   }
 
   if (args.intent === "retire" || args.income_source === "passive") {
@@ -838,7 +870,7 @@ export function getVisaOptions(args: {
     ranked[0]?.next_step ?? "",
     ...packNextActions(uniqueResourceUris),
     args.has_eu_family_link
-      ? "Review the EU family-member branch before filing a standard third-country route."
+      ? "Resolve the sponsor nationality and the appropriate Spanish-national or EU-family branch before selecting a filing route."
       : "",
   ]).slice(0, 6);
 
@@ -882,269 +914,98 @@ export function getVisaOptions(args: {
   };
 }
 
-export function checkBeckhamEligibility(args: {
-  years_since_last_spanish_residency: number;
+export interface BeckhamEligibilityArgs {
+  /** Legacy elapsed-time hint; never substitutes for the five tax-period check. */
+  years_since_last_spanish_residency?: number;
   employment_type: EmploymentType;
   move_reason: MoveReason;
   ownership_band?: "none" | "under_25" | "25_or_more";
-}): BeckhamEligibilityResult {
+  move_year?: number;
+  spanish_tax_resident_years?: number[];
+  prior_tax_periods_confirmed?: boolean;
+  qualifying_activity_confirmed?: boolean;
+  income_mix_requirement_met?: boolean;
+  relocation_link_confirmed?: boolean;
+  no_disqualifying_permanent_establishment?: boolean;
+  election_deadline_met?: boolean;
+  director_entity_is_patrimonial?: boolean;
+  director_is_related_party?: boolean;
+}
+export function checkBeckhamEligibility(args: BeckhamEligibilityArgs): BeckhamEligibilityResult {
   const decisionTrace: DecisionTraceItem[] = [];
   const reasons: string[] = [];
-  const blockingIssues: string[] = [];
+  const missing: string[] = [];
+  const blockers: string[] = [];
   const qualifyingPaths: string[] = [];
-  const nextSteps: string[] = [];
-  const relatedResourceUris = [
-    makeTopicResourceUri("beckham-regime"),
-    makeProcessResourceUri("tax-regime-review"),
-  ];
-
+  const relatedResourceUris = [makeTopicResourceUri("beckham-regime"), makeProcessResourceUri("tax-regime-review")];
   const routeUri = employmentRouteUri(args.employment_type, args.move_reason);
-  if (routeUri) {
-    relatedResourceUris.push(routeUri);
-  }
-
-  const hasSufficientGap = args.years_since_last_spanish_residency >= 5;
-  const isDirectorCase =
-    args.employment_type === "director_lt25" ||
-    args.employment_type === "director_gte25";
-  const isInnovationSelfEmployment =
-    args.employment_type === "self_employed" &&
-    args.move_reason === "startup_or_innovation";
-
-  decisionTrace.push({
-    factor: "non-residency gap",
-    finding: hasSufficientGap
-      ? `A ${args.years_since_last_spanish_residency}-year gap was provided.`
-      : `A ${args.years_since_last_spanish_residency}-year gap was provided.`,
-    impact: hasSufficientGap
-      ? "The threshold-style gap question does not block the analysis."
-      : "The short gap blocks the normal entry pattern for the regime.",
-  });
-
-  if (hasSufficientGap) {
-    reasons.push("The non-residency gap looks compatible with Beckham screening.");
-  } else {
-    blockingIssues.push(
-      "The non-residency gap is too short for the usual impatriate-regime entry test.",
-    );
-  }
-
+  if (routeUri) relatedResourceUris.push(routeUri);
+  const year = args.move_year;
+  const history = args.spanish_tax_resident_years;
+  const priorYears = year === undefined ? [] : Array.from({length:5}, (_, index) => year - index - 1);
+  const residentInPriorPeriod = priorYears.filter(period => history?.includes(period));
+  if (year !== undefined && year < 2023) missing.push("This screen covers the post-2023 article 93 rules; an earlier move needs the historical regime checked.");
+  if (residentInPriorPeriod.length) blockers.push(`Spanish tax residence was supplied for prior tax period(s) ${residentInPriorPeriod.join(", ")}, within the five periods before the move year.`);
+  if (year === undefined || history === undefined || args.prior_tax_periods_confirmed !== true) missing.push("Confirm the move year and a complete list of Spanish tax-residence years covering each of the five prior tax periods. An elapsed-year gap is not that evidence.");
+  else if (!residentInPriorPeriod.length) reasons.push(`No Spanish tax residence was declared in the five tax periods ${priorYears.slice().reverse().join(", ")}.`);
+  decisionTrace.push({factor:"prior tax periods", finding:year === undefined ? "Move year was not supplied." : `Move year ${year}; checked prior periods ${priorYears.slice().reverse().join(", ")}.`, impact:residentInPriorPeriod.length ? "A prior-period residence condition fails." : "A complete confirmed tax-year history is needed before the condition can pass."});
+  const requireConfirmed = (value: boolean | undefined, label: string) => {
+    if (value === false) blockers.push(label + " was reported as not satisfied.");
+    else if (value !== true) missing.push("Confirm " + label.toLowerCase() + ".");
+  };
+  requireConfirmed(args.relocation_link_confirmed, "The causal link between the qualifying activity and relocation, including the permitted timing");
+  requireConfirmed(args.qualifying_activity_confirmed, "The legally qualifying activity and applicable exclusions");
+  requireConfirmed(args.no_disqualifying_permanent_establishment, "Absence of disqualifying permanent-establishment income under the applicable article 93 branch");
+  requireConfirmed(args.election_deadline_met, "The applicable Modelo 149 election deadline and supporting registration dates");
   switch (args.employment_type) {
     case "spanish_employee":
-      decisionTrace.push({
-        factor: "employment structure",
-        finding: "Spanish-local employee profile.",
-        impact:
-          "A Spanish employment move can support Beckham if the relocation is tied to that job.",
-      });
-      if (
-        args.move_reason === "new_spanish_job" ||
-        args.move_reason === "intragroup_transfer"
-      ) {
-        qualifyingPaths.push("Spanish employment route");
-        reasons.push(
-          "The move reason matches a recognized Spanish employment entry path.",
-        );
-      } else {
-        blockingIssues.push(
-          "The relocation reason does not clearly match the normal Spanish-employment entry path.",
-        );
-      }
+      if (["new_spanish_job", "intragroup_transfer"].includes(args.move_reason)) qualifyingPaths.push("Qualifying Spanish employment or employer-ordered transfer");
+      else missing.push("Tie the move to qualifying Spanish employment or an employer-ordered transfer; a family-move label does not establish that path.");
       break;
     case "foreign_remote_employee":
-      decisionTrace.push({
-        factor: "employment structure",
-        finding: "Foreign-remote employee profile.",
-        impact:
-          "A qualifying remote-work move can support Beckham, but only if the relocation is actually tied to that structure.",
-      });
-      if (args.move_reason === "foreign_remote_work") {
-        qualifyingPaths.push("Qualifying foreign-remote work route");
-        reasons.push(
-          "The move reason aligns with a remote-work structure that can keep Beckham in play.",
-        );
-      } else {
-        blockingIssues.push(
-          "Foreign-remote employment was selected, but the move reason does not clearly match that route.",
-        );
-      }
+      if (args.move_reason === "foreign_remote_work") qualifyingPaths.push("Qualifying employee remote-work relocation");
+      else missing.push("Confirm that the relocation follows qualifying remote employment, rather than inferring it from a profession label.");
       break;
     case "director_lt25":
-      decisionTrace.push({
-        factor: "director ownership",
-        finding:
-          args.ownership_band === undefined
-            ? "Director ownership band was not provided."
-            : `Director ownership band provided: ${args.ownership_band}.`,
-        impact:
-          "Article 93 director cases now need entity-type and related-party review, so a low ownership band is only a partial positive signal.",
-      });
-      if (args.ownership_band === undefined) {
-        blockingIssues.push(
-          "A director case still needs ownership, entity-type, and related-party facts before the Beckham analysis is reliable.",
-        );
-      } else {
-        qualifyingPaths.push("Director route subject to entity-type and related-party review");
-        reasons.push(
-          "A lower ownership band can help, but it does not remove the need to verify patrimonial-entity and linked-entity tests.",
-        );
-      }
-      break;
     case "director_gte25":
-      decisionTrace.push({
-        factor: "director ownership",
-        finding:
-          args.ownership_band === undefined
-            ? "Higher-ownership director profile with no further entity facts provided."
-            : `Higher-ownership director profile with ownership band ${args.ownership_band}.`,
-        impact:
-          "A high-ownership director profile is not automatically fatal under current law, but it pushes entity-type and related-party review to the center of the analysis.",
-      });
-      qualifyingPaths.push("Director route subject to patrimonial-entity and related-party review");
-      blockingIssues.push(
-        "High director ownership requires checking whether the entity is patrimonial and whether the shareholding creates a related-party problem under article 93.",
-      );
+      if (args.move_reason === "director_appointment") qualifyingPaths.push("Director appointment route subject to the entity tests");
+      else missing.push("Confirm the move follows the acquisition of director status.");
+      if (args.director_entity_is_patrimonial === undefined) missing.push("Determine whether the director's entity is patrimonial under the Corporate Tax Act.");
+      if (args.director_entity_is_patrimonial === true) {
+        if (args.director_is_related_party === true) blockers.push("A director of a patrimonial entity cannot have a shareholding that makes the entity related under the applicable test.");
+        else if (args.director_is_related_party !== false) missing.push("Resolve the related-party shareholding test for the patrimonial entity.");
+      }
       break;
     case "self_employed":
-      decisionTrace.push({
-        factor: "self-employment",
-        finding: "Self-employed profile selected.",
-        impact:
-          "Ordinary self-employment usually falls back to standard resident-tax analysis unless the case fits a currently approvable entrepreneur or highly qualified branch.",
-      });
-      if (isInnovationSelfEmployment) {
-        qualifyingPaths.push(
-          "Potential entrepreneur route if the business is approved as innovative",
-        );
-        reasons.push(
-          "The case may fit a current entrepreneur-style entry path, but that approval point still needs review before Beckham can be treated as open.",
-        );
-        blockingIssues.push(
-          "Innovation-driven self-employment needs current entrepreneur-route approval logic before the tax regime can be confirmed.",
-        );
-      } else {
-        blockingIssues.push(
-          "Ordinary self-employment is usually outside the strongest Beckham entry paths.",
-        );
-      }
+      if (args.move_reason === "startup_or_innovation") qualifyingPaths.push("Entrepreneur activity qualified under article 70 of Law 14/2013");
+      else missing.push("Ordinary self-employment alone does not establish an article 93 entry path; identify any approved entrepreneur or qualifying professional activity.");
       break;
     case "highly_qualified_professional":
-      decisionTrace.push({
-        factor: "professional profile",
-        finding: "Highly qualified professional profile.",
-        impact:
-          "A qualifying specialist or executive move can support Beckham screening.",
-      });
-      qualifyingPaths.push("Highly qualified professional route");
-      reasons.push(
-        "The professional profile matches one of the stronger recognized entry paths.",
-      );
+      if (args.move_reason === "qualifying_professional_activity") qualifyingPaths.push("Highly qualified activity for an eligible startup or qualifying training, research, development or innovation");
+      else missing.push("Identify the qualifying professional-activity relocation. A highly-qualified job title or immigration permit alone is insufficient for this tax path.");
+      requireConfirmed(args.income_mix_requirement_met, "Qualifying remuneration exceeding 40% of combined business, professional and employment income");
       break;
-    case "unknown":
-      decisionTrace.push({
-        factor: "employment structure",
-        finding: "Employment structure is unknown.",
-        impact:
-          "The regime cannot be confirmed safely until the move is tied to a qualifying work structure.",
-      });
-      blockingIssues.push(
-        "The employment structure is too vague to confirm Beckham safely.",
-      );
-      break;
+    default:
+      missing.push("Identify an article 93 qualifying work or activity path.");
   }
-
-  const requiresMoreFacts =
-    args.employment_type === "unknown" ||
-    isDirectorCase ||
-    isInnovationSelfEmployment;
-
-  let status: BeckhamStatus;
-  if (!hasSufficientGap) {
-    status = "not_eligible";
-  } else if (isDirectorCase || isInnovationSelfEmployment) {
-    status = "needs_more_info";
-  } else if (requiresMoreFacts && qualifyingPaths.length > 0) {
-    status = "needs_more_info";
-  } else if (qualifyingPaths.length > 0 && blockingIssues.length === 0) {
-    status = "eligible";
-  } else if (requiresMoreFacts) {
-    status = "needs_more_info";
-  } else {
-    status = "not_eligible";
-  }
-
-  if (status === "eligible") {
-    nextSteps.push(
-      "Confirm that the relocation documents, employment evidence, and Social Security setup line up with the qualifying path.",
-    );
-    nextSteps.push(
-      "Run a conceptual regime comparison next so the tax answer stays tied to the actual work structure.",
-    );
-  } else if (status === "needs_more_info") {
-    nextSteps.push(
-      "Clarify the exact work structure, ownership band, and move basis before giving a definitive Beckham answer.",
-    );
-    if (isDirectorCase) {
-      nextSteps.push(
-        "Verify whether the entity is patrimonial and whether the shareholding creates related-party status before treating the director route as eligible or blocked.",
-      );
-    }
-    if (isInnovationSelfEmployment) {
-      nextSteps.push(
-        "Confirm whether the business actually fits the current entrepreneur approval route before comparing Beckham against standard resident taxation.",
-      );
-    }
-    nextSteps.push(
-      "Keep the case in review-needed territory rather than promising eligibility too early.",
-    );
-  } else {
-    nextSteps.push(
-      "Treat standard Spanish resident-tax analysis as the default unless the work structure changes materially.",
-    );
-  }
-
-  const uniqueResourceUris = uniqueStrings(relatedResourceUris);
-  const reviewLevel: ReviewLevel =
-    status === "needs_more_info"
-      ? "high"
-      : status === "eligible" &&
-          (args.employment_type === "spanish_employee" ||
-            args.employment_type === "highly_qualified_professional" ||
-            args.employment_type === "foreign_remote_employee")
-        ? "low"
-        : "medium";
-
-  const summary =
-    status === "eligible"
-      ? "The profile fits the main qualitative Beckham gatechecks."
-      : status === "needs_more_info"
-        ? "The profile may fit Beckham, but a key fact pattern is still unresolved."
-        : "The profile does not align cleanly with the strongest Beckham entry paths.";
-
+  decisionTrace.push({factor:"qualifying path", finding:qualifyingPaths[0] ?? "No qualifying path established.", impact:"The activity, relocation, timing and exclusions must all be supported before eligibility can be screened positively."});
+  const status: BeckhamStatus = blockers.length ? "not_eligible" : missing.length || !qualifyingPaths.length ? "needs_more_info" : "eligible";
+  const resources = uniqueStrings(relatedResourceUris);
   return {
     status,
-    summary,
-    decision_trace: decisionTrace,
-    key_rules_applied: packRules(uniqueResourceUris),
-    review_level: reviewLevel,
-    official_legal_sources: packOfficialSources(uniqueResourceUris),
-    current_verification_flags: packVerificationFlags(uniqueResourceUris),
-    reasons: uniqueStrings(reasons),
-    blocking_issues: uniqueStrings(blockingIssues),
-    qualifying_paths: uniqueStrings(qualifyingPaths),
-    next_steps: uniqueStrings(nextSteps),
-    suggested_follow_up_tools:
-      status === "eligible"
-        ? uniqueTools(["compare_tax_regimes"])
-        : status === "needs_more_info"
-          ? uniqueTools([
-              "get_visa_options",
-              "compare_tax_regimes",
-              "route_to_legal_fournier_help",
-            ])
-          : uniqueTools(["compare_tax_regimes"]),
-    related_resource_uris: uniqueResourceUris,
-    references: packReferences(uniqueResourceUris),
+    summary:status === "eligible" ? "The supplied, explicitly confirmed facts pass this preliminary article 93 screen; document and filing review remain necessary." : status === "not_eligible" ? "At least one supplied fact fails this article 93 screen." : "Beckham eligibility remains unresolved until the listed legal and timing facts are confirmed.",
+    decision_trace:decisionTrace,
+    key_rules_applied:packRules(resources),
+    review_level:status === "eligible" ? "medium" : "high",
+    official_legal_sources:packOfficialSources(resources),
+    current_verification_flags:packVerificationFlags(resources),
+    reasons:uniqueStrings(reasons),
+    blocking_issues:uniqueStrings([...blockers, ...missing]),
+    qualifying_paths:qualifyingPaths,
+    next_steps:status === "eligible" ? ["Check the supporting evidence and Modelo 149 filing dates with the actual relocation chronology.", "Compare the tax regimes using the same confirmed eligibility facts."] : uniqueStrings([...missing, ...blockers, "Keep standard resident taxation as the baseline until any unresolved special-regime conditions are reviewed."]),
+    suggested_follow_up_tools:status === "eligible" ? ["compare_tax_regimes"] : ["compare_tax_regimes", "route_to_legal_fournier_help"],
+    related_resource_uris:resources,
+    references:packReferences(resources),
   };
 }
 
@@ -1154,8 +1015,12 @@ export function getResidencyPath(args: {
   nationality_track?: NationalityTrack;
   special_nationality_basis?: SpecialNationalityBasis;
   has_absence_concerns?: boolean;
+  qualifying_legal_residence_years?: number;
+  continuity_confirmed?: boolean;
 }): ResidencyPathResult {
   const track = args.nationality_track ?? "unknown";
+  const qualifyingYears = args.qualifying_legal_residence_years;
+  const nationalityClockVerified = qualifyingYears !== undefined && qualifyingYears >= 0 && qualifyingYears <= args.years_in_spain && args.continuity_confirmed === true && !args.has_absence_concerns && !["student", "irregular_status", "new_arrival"].includes(args.current_status);
   const specialBasis = args.special_nationality_basis ?? "not_specified";
   const decisionTrace: DecisionTraceItem[] = [];
   const milestones: string[] = [];
@@ -1289,6 +1154,12 @@ export function getResidencyPath(args: {
     nextSteps.push("Establish and maintain qualifying lawful residence before counting toward long-term residence.");
   }
 
+  if (track !== "unknown" && !nationalityClockVerified) {
+    nationalityStatus = "review_needed";
+    milestones.push("The nationality clock is not verified; elapsed time in Spain alone does not establish qualifying residence.");
+    cautionNotes.push("Nationality requires legal, continuous residence immediately before applying. Student stay, irregular periods and unresolved absences cannot be counted as qualifying nationality residence.");
+    nextSteps.push("Supply the number of qualifying legal-residence years and confirm continuity immediately before filing, with status and absence evidence.");
+  } else {
   switch (track) {
     case "ibero_2_year":
       decisionTrace.push({
@@ -1297,7 +1168,7 @@ export function getResidencyPath(args: {
         impact:
           "The nationality analysis may open earlier than the standard ten-year track.",
       });
-      if (args.years_in_spain >= 2) {
+      if ((qualifyingYears ?? 0) >= 2) {
         nationalityStatus = "likely_eligible";
         milestones.push("The reduced nationality timeline may already be open.");
         nextSteps.push("Prepare the nationality evidence pack and review exam requirements if they apply.");
@@ -1329,7 +1200,7 @@ export function getResidencyPath(args: {
         nextSteps.push(
           "Identify the exact article 22 basis before promising a one-year nationality route.",
         );
-      } else if (args.years_in_spain >= 1) {
+      } else if ((qualifyingYears ?? 0) >= 1) {
         nationalityStatus = "likely_eligible";
         milestones.push(
           `The one-year nationality path may be open through the basis: ${specialNationalityBasisLabel(specialBasis)}.`,
@@ -1352,7 +1223,7 @@ export function getResidencyPath(args: {
         impact:
           "Nationality timing should be screened under the refugee-specific track rather than the standard path.",
       });
-      if (args.years_in_spain >= 5) {
+      if ((qualifyingYears ?? 0) >= 5) {
         nationalityStatus = "likely_eligible";
         milestones.push("The refugee nationality timeline may be complete.");
       } else {
@@ -1367,7 +1238,7 @@ export function getResidencyPath(args: {
         impact:
           "Nationality remains a longer track than long-term residence in this case.",
       });
-      if (args.years_in_spain >= 10) {
+      if ((qualifyingYears ?? 0) >= 10) {
         nationalityStatus = "likely_eligible";
         milestones.push("The standard nationality timeline may be complete.");
       } else {
@@ -1387,13 +1258,20 @@ export function getResidencyPath(args: {
       break;
   }
 
+  }
   if (args.current_status === "citizenship_applicant") {
     nationalityStatus = "already_in_process";
     milestones.push("Nationality is already in process.");
   }
 
+  if (args.has_absence_concerns && permanentResidencyStatus === "likely_eligible") {
+    permanentResidencyStatus = "review_needed";
+    for (let index = milestones.length - 1; index >= 0; index--) if (/milestone may already be open/.test(milestones[index])) milestones.splice(index, 1);
+    milestones.push("Permanent-residence timing needs continuity and absence review.");
+  }
   const uniqueResourceUris = uniqueStrings(relatedResourceUris);
   const reviewLevel: ReviewLevel =
+    (track !== "unknown" && !nationalityClockVerified) ||
     args.current_status === "irregular_status" ||
     args.current_status === "student" ||
     args.has_absence_concerns ||
@@ -1407,9 +1285,9 @@ export function getResidencyPath(args: {
         : "low";
 
   const summary =
-    args.current_status === "eu_citizen_registered" && args.years_in_spain >= 5
+    args.current_status === "eu_citizen_registered" && permanentResidencyStatus === "likely_eligible"
       ? "The five-year milestone may support EU permanent residence, while nationality timing still depends on the confirmed nationality track."
-      : args.current_status === "eu_family_member_resident" && args.years_in_spain >= 5
+      : args.current_status === "eu_family_member_resident" && permanentResidencyStatus === "likely_eligible"
         ? "The five-year milestone may support permanent residence under the EU-family regime, while nationality timing still depends on the confirmed track and continuity."
       : permanentResidencyStatus === "already_long_term"
       ? "The long-term residence milestone is already satisfied; the remaining question is nationality timing or document maintenance."
@@ -1533,7 +1411,11 @@ export function compareTaxRegimes(args: {
   has_foreign_income?: boolean;
   has_significant_foreign_assets?: boolean;
   prefers_predictability?: boolean;
+  beckham_assessment?: BeckhamEligibilityArgs;
 }): TaxRegimeResult {
+  const assessment = args.beckham_assessment ? checkBeckhamEligibility(args.beckham_assessment) : undefined;
+  const assessmentMatches = !!args.beckham_assessment && args.beckham_assessment.employment_type === args.employment_type;
+  const eligibilityConfirmed = assessmentMatches && assessment?.status === "eligible";
   const decisionTrace: DecisionTraceItem[] = [];
   const likelyFitNotes: string[] = [];
   const caveats = [
@@ -1674,6 +1556,12 @@ export function compareTaxRegimes(args: {
     recommendation = "depends";
   }
 
+  if (!eligibilityConfirmed && recommendation === "beckham") recommendation = "depends";
+  if (assessmentMatches && assessment?.status === "not_eligible") recommendation = "standard_irpf";
+  if (!eligibilityConfirmed) {
+    decisionTrace.push({factor:"Beckham eligibility", finding:assessmentMatches ? assessment?.summary ?? "Eligibility unresolved." : "No matching complete Beckham assessment supplied.", impact:"Foreign income, assets and preferences cannot make an unavailable or unverified tax regime eligible."});
+    caveats.push(...(assessment?.blocking_issues ?? ["Run check_beckham_eligibility and pass the same full facts as beckham_assessment before preferring Beckham."]));
+  }
   const nextActions =
     recommendation === "beckham"
       ? [
@@ -1730,11 +1618,11 @@ export function compareTaxRegimes(args: {
 
   const uniqueResourceUris = uniqueStrings(relatedResourceUris);
   const reviewLevel: ReviewLevel =
-    !args.employment_type || args.employment_type === "unknown"
+    !eligibilityConfirmed || !args.employment_type || args.employment_type === "unknown"
       ? "high"
       : recommendation === "depends"
         ? "medium"
-        : "low";
+        : assessment?.review_level ?? "medium";
 
   const summary =
     recommendation === "beckham"
@@ -1772,21 +1660,30 @@ export function compareTaxRegimes(args: {
 
 function helpAreaResourceUris(area: HelpArea): string[] {
   switch (area) {
+    case "spanish_family_route": return [makeRouteResourceUri("spanish-national-family"), makeTopicResourceUri("legal-fournier-handoff")];
+    case "property":
+    case "business":
+    case "wealth":
+    case "inheritance":
+    case "other": return [makeTopicResourceUri("tool-screeners"), makeTopicResourceUri("legal-fournier-handoff")];
     case "visa_planning":
       return [
         makeTopicResourceUri("route-selection"),
+        makeTopicResourceUri("tool-screeners"),
         makeTopicResourceUri("legal-fournier-handoff"),
       ];
     case "eu_family_route":
       return [
         makeTopicResourceUri("eu-family-route-check"),
         makeRouteResourceUri("eu-family-member-card"),
+        makeTopicResourceUri("tool-screeners"),
         makeTopicResourceUri("legal-fournier-handoff"),
       ];
     case "beckham":
       return [
         makeTopicResourceUri("beckham-regime"),
         makeProcessResourceUri("tax-regime-review"),
+        makeTopicResourceUri("tool-screeners"),
         makeTopicResourceUri("legal-fournier-handoff"),
       ];
     case "residency_path":
@@ -1795,15 +1692,18 @@ function helpAreaResourceUris(area: HelpArea): string[] {
         makeTrackResourceUri("permanent-residency-5-year"),
         makeTopicResourceUri("legal-fournier-handoff"),
       ];
+    case "appointments":
     case "nie_tie":
       return [
         makeProcessResourceUri("nie-tie"),
+        makeTopicResourceUri("tool-screeners"),
         makeTopicResourceUri("legal-fournier-handoff"),
       ];
     case "tax_regimes":
       return [
         makeTopicResourceUri("tax-regimes"),
         makeProcessResourceUri("tax-regime-review"),
+        makeTopicResourceUri("tool-screeners"),
         makeTopicResourceUri("legal-fournier-handoff"),
       ];
     case "nationality":
@@ -1815,12 +1715,24 @@ function helpAreaResourceUris(area: HelpArea): string[] {
   }
 }
 
-function helpService(area: HelpArea): HelpRouteResult["recommended_service"] {
+function helpService(
+  area: HelpArea,
+  preferredLanguage: HandoffLanguage = "en",
+): HelpRouteResult["recommended_service"] {
   switch (area) {
+    case "property":
+    case "business":
+    case "wealth":
+    case "inheritance":
+    case "other":
+    case "spanish_family_route":
+      return {title: area === "property" ? "Property purchase and conveyancing review" : area === "business" ? "Business structure and commercial review" : area === "wealth" ? "Wealth and cross-border asset review" : area === "inheritance" ? "Inheritance and succession review" : area === "spanish_family_route" ? "Spanish-national family residence review" : "General legal intake",
+        url:withMcpAttribution(getContactUrl(preferredLanguage), "handoff"),
+        reason:`Route this ${helpAreaLabel(area)} matter to the relevant Legal Fournier service team with its specific facts and documents.`};
     case "eu_family_route":
       return {
         title: "EU Family Member Card",
-        url: SITE_URLS.serviceEuFamilyMemberCard,
+        url: withMcpAttribution(SITE_URLS.serviceEuFamilyMemberCard, "handoff"),
         reason:
           "Best fit when the case depends on a community-regime family-card analysis or retention-of-right review.",
       };
@@ -1828,35 +1740,36 @@ function helpService(area: HelpArea): HelpRouteResult["recommended_service"] {
     case "tax_regimes":
       return {
         title: "Beckham Law",
-        url: SITE_URLS.serviceBeckham,
+        url: withMcpAttribution(SITE_URLS.serviceBeckham, "handoff"),
         reason:
           "Best fit when the answer depends on article 93 eligibility, deadlines, or tax-structure review.",
       };
     case "residency_path":
       return {
         title: "Long-Term Residency",
-        url: SITE_URLS.serviceLongTermResidency,
+        url: withMcpAttribution(SITE_URLS.serviceLongTermResidency, "handoff"),
         reason:
           "Best fit when the case turns on long-term residence timing, continuity, or status history.",
       };
     case "nationality":
       return {
         title: "Nationality by Residence",
-        url: SITE_URLS.serviceNationality,
+        url: withMcpAttribution(SITE_URLS.serviceNationality, "handoff"),
         reason:
           "Best fit when nationality timing, continuity, or reduced-track eligibility needs lawyer review.",
       };
+    case "appointments":
     case "nie_tie":
       return {
         title: "TIE Card Assistance",
-        url: SITE_URLS.serviceTie,
+        url: withMcpAttribution(SITE_URLS.serviceTie, "handoff"),
         reason:
           "Best fit when the issue is appointment sequencing, card issuance, or document mismatch.",
       };
     case "visa_planning":
       return {
         title: "Contact Legal Fournier",
-        url: SITE_URLS.contact,
+        url: withMcpAttribution(getContactUrl(preferredLanguage), "handoff"),
         reason:
           "Best fit for mixed or still-unresolved route planning that needs a human intake rather than a single specialist service page.",
       };
@@ -1865,6 +1778,13 @@ function helpService(area: HelpArea): HelpRouteResult["recommended_service"] {
 
 function helpAreaLabel(area: HelpArea): string {
   switch (area) {
+    case "property": return "property";
+    case "business": return "business";
+    case "wealth": return "wealth";
+    case "inheritance": return "inheritance";
+    case "appointments": return "appointments";
+    case "other": return "general legal";
+    case "spanish_family_route": return "Spanish-national family residence";
     case "visa_planning":
       return "visa planning";
     case "eu_family_route":
@@ -1882,11 +1802,22 @@ function helpAreaLabel(area: HelpArea): string {
   }
 }
 
+function helpPreparation(area: HelpArea): string[] {
+  switch (area) {
+    case "property": return ["Property location, price, ownership share, intended use and tax/reference value.", "Reservation, deposit, signing and finance deadlines.", "Draft purchase contract, title or registry extract, cadastral data and any mortgage terms."];
+    case "business": return ["Business activity, company countries, ownership, management location and expected revenue.", "Incorporation, investment, contract and filing deadlines.", "Company registry documents, ownership chart, draft contracts and financial assumptions."];
+    case "wealth": return ["Tax residence, regional and country links, asset categories, values and ownership.", "Tax-year, reporting and planned-transfer dates.", "Asset schedule, valuations, relevant tax filings and ownership records."];
+    case "inheritance": return ["Deceased's and heirs' country links, relationships, residence, assets and intended succession outcome.", "Date of death, acceptance steps and applicable tax or probate deadlines.", "Will, death certificate, kinship records, asset values and any succession documents."];
+    case "other": return ["A short description of the legal objective and countries involved.", "Relevant events, contract dates, notices and deadlines.", "Relevant contracts, correspondence, decisions or other documents already available."];
+    default: return ["Short summary of the route theory or legal question.", "Timeline of Spanish residence, filings, deadlines and upcoming appointments.", "Passports, residence cards, approvals, denials or notices already issued."];
+  }
+}
+
 function buildHelpIntakeFields(args: {
   area: HelpArea;
   urgency: HelpUrgency;
   blockers: string[];
-  preferred_language?: "en" | "es";
+  preferred_language?: HandoffLanguage;
   already_filed?: boolean;
   service: HelpRouteResult["recommended_service"];
 }): HelpRouteResult["intake_fields"] {
@@ -1959,7 +1890,7 @@ function buildHelpIntakeFields(args: {
       value: "",
       required: true,
       status: "needs_input",
-      guidance: "List Spain arrival dates, residence periods, filing dates, expiry dates, notices, and upcoming appointments.",
+      guidance: helpPreparation(args.area)[1],
     },
     {
       key: "documents_available",
@@ -1967,7 +1898,7 @@ function buildHelpIntakeFields(args: {
       value: "",
       required: true,
       status: "needs_input",
-      guidance: "List passports, cards, approvals, denials, tax registrations, relationship proof, or other evidence already on hand.",
+      guidance: helpPreparation(args.area)[2],
     },
   ];
 }
@@ -1976,13 +1907,14 @@ export function routeToLegalFournierHelp(args: {
   area: HelpArea;
   urgency?: HelpUrgency;
   blockers?: string[];
-  preferred_language?: "en" | "es";
+  preferred_language?: HandoffLanguage;
   already_filed?: boolean;
 }): HelpRouteResult {
   const urgency = args.urgency ?? "normal";
   const blockers = uniqueStrings(args.blockers ?? []);
   const relatedResourceUris = uniqueStrings(helpAreaResourceUris(args.area));
-  const service = helpService(args.area);
+  const preferredLanguage = args.preferred_language ?? "en";
+  const service = helpService(args.area, preferredLanguage);
   const escalationTriggers = [
     ...blockers,
     args.already_filed ? "already filed or active procedure" : "",
@@ -2008,31 +1940,35 @@ export function routeToLegalFournierHelp(args: {
   ]);
 
   const whatToPrepare = uniqueStrings([
-    "Short summary of the route theory or legal question.",
-    "Timeline of Spanish residence, filings, deadlines, and any upcoming appointments.",
-    "Passports, residence cards, approvals, denials, or notices already issued.",
+    ...helpPreparation(args.area),
     args.area === "beckham" || args.area === "tax_regimes"
       ? "Employment structure, ownership details, and any foreign-income or foreign-asset facts."
       : "",
-    args.area === "eu_family_route"
+    args.area === "spanish_family_route"
+      ? "Spanish sponsor nationality, relationship/dependency evidence, free-movement history and existing residence documents."
+      : args.area === "eu_family_route"
       ? "Proof of the EU-family relationship, the EU citizen's own residence basis, and any status-change events such as divorce or departure."
       : "",
     args.area === "nationality" || args.area === "residency_path"
       ? "Absence history, status transitions, and evidence of continuous legal residence."
       : "",
-    args.area === "nie_tie"
+    args.area === "nie_tie" || args.area === "appointments"
       ? "Appointment details, forms prepared, payment receipts, and the exact office or procedure label being used."
       : "",
   ]);
 
   const handoffLanguage =
-    args.preferred_language === "es" ? "Spanish" : "English";
+    preferredLanguage === "es"
+      ? "Spanish"
+      : preferredLanguage === "fr"
+        ? "French"
+        : "English";
   const handoffArticle = handoffLanguage === "English" ? "an" : "a";
   const intakeFields = buildHelpIntakeFields({
     area: args.area,
     urgency,
     blockers,
-    preferred_language: args.preferred_language,
+    preferred_language: preferredLanguage,
     already_filed: args.already_filed,
     service,
   });
@@ -2053,12 +1989,15 @@ export function routeToLegalFournierHelp(args: {
       : "Escalation is optional, but a structured handoff is ready if the user wants human review.",
     representation_notice: REPRESENTATION_NOTICE,
     recommended_service: service,
-    booking_url: SITE_URLS.consultationBooking,
+    booking_url: withMcpAttribution(
+      getConsultationBookingUrl(preferredLanguage),
+      "handoff",
+    ),
     why_now: whyNow,
     what_to_prepare: whatToPrepare,
     intake_fields: intakeFields,
     agent_handoff_message: agentHandoffMessage,
-    suggested_follow_up_tools: [],
+    suggested_follow_up_tools: ["get_paid_consultation_options"],
     related_resource_uris: relatedResourceUris,
     references: uniqueReferences([
       ...packReferences(relatedResourceUris),

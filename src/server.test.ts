@@ -1,3 +1,6 @@
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -7,9 +10,16 @@ import {
   makeRouteResourceUri,
   makeTopicResourceUri,
 } from "./data/canonical-packs.js";
+import { SKILLS_INDEX_URI, SKILLS_TEMPLATE_URI, makeSkillResourceUri } from "./data/skills.js";
+import { LEGAL_FOURNIER_TOOL_CATALOG_URI } from "./data/tool-catalog.js";
 import { createServer } from "./server.js";
+import { resetTelemetryRecorderForTests } from "./telemetry.js";
 
 async function connectPair() {
+  const telemetryDir = await mkdtemp(path.join(os.tmpdir(), "spain-legal-telemetry-"));
+  process.env.LF_MCP_TELEMETRY_DIR = telemetryDir;
+  resetTelemetryRecorderForTests();
+
   const server = createServer();
   const client = new Client(
     {
@@ -38,15 +48,20 @@ describe("Spain Legal MCP server", () => {
       client.listResourceTemplates(),
     ]);
 
-    expect(tools.tools).toHaveLength(6);
+    expect(tools.tools).toHaveLength(13);
     expect(tools.tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        "find_legal_fournier_tool",
+        "run_legal_fournier_tool",
+        "get_paid_consultation_options",
+        "get_paid_call_availability",
         "get_visa_options",
         "check_beckham_eligibility",
         "get_residency_path",
         "explain_nie_process",
         "compare_tax_regimes",
         "route_to_legal_fournier_help",
+        "create_legal_fournier_contact_request",
       ]),
     );
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(
@@ -61,8 +76,11 @@ describe("Spain Legal MCP server", () => {
     expect(resources.resources.map((resource) => resource.uri)).toEqual(
       expect.arrayContaining([
         CATALOG_URI,
+        LEGAL_FOURNIER_TOOL_CATALOG_URI,
+        SKILLS_INDEX_URI,
         makeRouteResourceUri("digital-nomad-visa"),
         makeTopicResourceUri("beckham-regime"),
+        makeTopicResourceUri("tool-screeners"),
       ]),
     );
     expect(templates.resourceTemplates.map((template) => template.uriTemplate)).toEqual(
@@ -71,8 +89,208 @@ describe("Spain Legal MCP server", () => {
         "legalfournier://spain-legal/processes/{process_id}",
         "legalfournier://spain-legal/tracks/{track_id}",
         "legalfournier://spain-legal/topics/{topic_id}",
+        "legalfournier://spain-legal/skills/{skill_id}",
       ]),
     );
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("runs a public Legal Fournier tool directly inside MCP", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.callTool({
+      name: "run_legal_fournier_tool",
+      arguments: {
+        tool_id: "property-buyer-cost-risk",
+        user_goal: "Non-resident buyer wants to buy a resale apartment in Barcelona.",
+        facts: [
+          "Purchase price is 900000 EUR.",
+          "Autonomous community is Catalonia and city is Barcelona.",
+          "The property is resale.",
+          "There is a mortgage and a deposit deadline.",
+          "Buyer is non resident.",
+        ],
+        property: {purchase_price_eur:900000,taxable_value_eur:900000,region:"Catalonia",property_type:"resale",special_tax_regime:"general",full_ownership:true,transaction_date:"2026-10-18"},
+        complexity_signals: ["deposit", "non resident buyer"],
+      },
+    });
+
+    const structured = result.structuredContent as {
+      tool_id: string;
+      outcome: string;
+      selected_url: string;
+      missing_facts: string[];
+      complexity_flags: string[];
+      direct_screening_notes: string[];
+      numeric_notes: string[];
+      handoff_recommended: boolean;
+      related_mcp_tools: string[];
+      update_policy: string[];
+    };
+
+    expect(structured.tool_id).toBe("property-buyer-cost-risk");
+    expect(structured.outcome).toBe("needs_human_review");
+    expect(structured.selected_url).toBe(
+      "https://legalfournier.com/en/tools/spain-property-buyer-cost-risk-calculator/?utm_source=mcp&utm_medium=agent&utm_campaign=tool_property-buyer-cost-risk",
+    );
+    expect(structured.missing_facts).toHaveLength(0);
+    expect(structured.complexity_flags).toEqual(
+      expect.arrayContaining(["deposit", "non resident buyer"]),
+    );
+    expect(structured.numeric_notes.some((note) => /EUR 93,000/.test(note))).toBe(true);
+    expect(structured.numeric_notes.some((note) => /fees|costs/i.test(note))).toBe(true);
+    expect(structured.direct_screening_notes.some((note) => /first delivery from a developer/i.test(note))).toBe(true);
+    expect(structured.direct_screening_notes.some((note) => /reduced rates or relief/i.test(note))).toBe(true);
+    expect(structured.handoff_recommended).toBe(true);
+    expect(structured.related_mcp_tools).toContain("route_to_legal_fournier_help");
+    expect(structured.update_policy.some((note) => /Volatile values/i.test(note))).toBe(true);
+    expect(structured.update_policy.some((note) => /dated official.source schedules/i.test(note))).toBe(true);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("uses current Digital Nomad Visa income constants in the MCP direct runner", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.callTool({
+      name: "run_legal_fournier_tool",
+      arguments: {
+        tool_id: "digital-nomad-visa-eligibility",
+        user_goal: "Remote worker wants to move to Spain with spouse and two children.",
+        facts: [
+          "Applicant is a foreign remote employee working for a US employer.",
+          "Monthly income is 5000 EUR.",
+          "Family includes a spouse and two children.",
+        ],
+        digital_nomad_income: {
+          income_sources: [{source_id:"salary",amount:5000,currency:"EUR",period:"monthly",category:"employment"}],
+          accompanying_family: [{member_id:"spouse",relationship:"spouse"},{member_id:"child1",relationship:"child"},{member_id:"child2",relationship:"child"}],
+          assessment_date:"2026-10-18",
+        },
+      },
+    });
+
+    const structured = result.structuredContent as {
+      direct_screening_notes: string[];
+      missing_facts: string[];
+      numeric_notes: string[];
+      selected_url: string;
+    };
+
+    expect(structured.selected_url).toBe(
+      "https://legalfournier.com/en/tools/digital-nomad-visa-eligibility/?utm_source=mcp&utm_medium=agent&utm_campaign=tool_digital-nomad-visa-eligibility",
+    );
+    expect(structured.missing_facts).not.toContain("employer or client country");
+    expect(structured.numeric_notes.some((note) => /EUR 3,968\.25\/month/.test(note))).toBe(true);
+    expect(structured.numeric_notes.some((note) => /surplus EUR 1,031\.75\/month/.test(note))).toBe(true);
+    expect(structured.direct_screening_notes.some((note) => /companies outside Spain/i.test(note))).toBe(true);
+    expect(structured.direct_screening_notes.some((note) => /certificate of applicable legislation/i.test(note))).toBe(true);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("matches public Legal Fournier tools to agent case facts", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.callTool({
+      name: "find_legal_fournier_tool",
+      arguments: {
+        query:
+          "High net worth client buying property in Spain with inheritance and wealth tax exposure",
+        area: "property",
+        preferred_language: "en",
+        complexity_signals: ["non resident buyer", "regional relief", "high value assets"],
+        max_results: 3,
+      },
+    });
+
+    const structured = result.structuredContent as {
+      catalog_size: number;
+      catalog_resource_uri: string;
+      matched_tools: Array<{
+        id: string;
+        selected_url: string;
+        selected_language: string;
+        related_mcp_tools: string[];
+        related_resource_uris: string[];
+      }>;
+      recommended_mcp_sequence: string[];
+      handoff_url: string;
+      legal_notice: string;
+    };
+
+    expect(structured.catalog_size).toBe(12);
+    expect(structured.catalog_resource_uri).toBe(LEGAL_FOURNIER_TOOL_CATALOG_URI);
+    expect(structured.matched_tools[0].id).toBe("property-buyer-cost-risk");
+    expect(structured.matched_tools[0].selected_url).toBe(
+      "https://legalfournier.com/en/tools/spain-property-buyer-cost-risk-calculator/?utm_source=mcp&utm_medium=agent&utm_campaign=tool_property-buyer-cost-risk",
+    );
+    expect(structured.matched_tools[0].selected_language).toBe("en");
+    expect(structured.matched_tools[0].related_mcp_tools).toContain(
+      "route_to_legal_fournier_help",
+    );
+    expect(structured.matched_tools[0].related_resource_uris).toContain(
+      makeTopicResourceUri("tool-screeners"),
+    );
+    expect(structured.recommended_mcp_sequence[0]).toBe("find_legal_fournier_tool");
+    expect(structured.recommended_mcp_sequence).toContain("route_to_legal_fournier_help");
+    expect(structured.handoff_url).toBe(
+      "https://legalfournier.com/en/agent-book-consultation/?utm_source=mcp&utm_medium=agent&utm_campaign=handoff",
+    );
+    expect(structured.legal_notice).toMatch(/not individualized legal or tax advice/i);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("returns the full public tool catalog when requested", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.callTool({
+      name: "find_legal_fournier_tool",
+      arguments: {
+        include_all_tools: true,
+        preferred_language: "fr",
+      },
+    });
+
+    const structured = result.structuredContent as {
+      catalog_size: number;
+      matched_tools: Array<{ id: string; selected_language: string }>;
+    };
+
+    expect(structured.catalog_size).toBe(12);
+    expect(structured.matched_tools).toHaveLength(12);
+    expect(
+      structured.matched_tools.some(
+        (tool) => tool.id === "digital-nomad-visa-eligibility" && tool.selected_language === "fr",
+      ),
+    ).toBe(true);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("prioritizes broad move-to-Spain route matching over appointment matching", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.callTool({
+      name: "find_legal_fournier_tool",
+      arguments: {
+        query: "Legal Fournier public tools for English speaking expats moving to Spain",
+        preferred_language: "en",
+        max_results: 3,
+      },
+    });
+
+    const structured = result.structuredContent as {
+      matched_tools: Array<{ id: string; why: string[] }>;
+    };
+
+    expect(structured.matched_tools[0].id).toBe("best-visa-spain");
+    expect(structured.matched_tools[0].why).toContain(
+      "Matches broad move-to-Spain route-selection intent.",
+    );
+    expect(structured.matched_tools[0].why.join(" ")).not.toMatch(/NIE/);
 
     await Promise.all([client.close(), server.close()]);
   });
@@ -92,6 +310,25 @@ describe("Spain Legal MCP server", () => {
     });
 
     expect(result.completion.values).toContain("digital-nomad-visa");
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("completes known skill ids for the skill resource template", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.complete({
+      ref: {
+        type: "ref/resource",
+        uri: SKILLS_TEMPLATE_URI,
+      },
+      argument: {
+        name: "skill_id",
+        value: "beck",
+      },
+    });
+
+    expect(result.completion.values).toContain("beckham-precheck");
 
     await Promise.all([client.close(), server.close()]);
   });
@@ -153,6 +390,7 @@ describe("Spain Legal MCP server", () => {
       name: "check_beckham_eligibility",
       arguments: {
         years_since_last_spanish_residency: 2,
+        move_year:2026,spanish_tax_resident_years:[2022],prior_tax_periods_confirmed:true,
         employment_type: "spanish_employee",
         move_reason: "new_spanish_job",
       },
@@ -166,7 +404,7 @@ describe("Spain Legal MCP server", () => {
     };
 
     expect(structured.status).toBe("not_eligible");
-    expect(structured.blocking_issues[0]).toMatch(/non-residency gap/i);
+    expect(structured.blocking_issues[0]).toMatch(/prior tax period/i);
     expect(structured.official_legal_sources.some((source) => /boe\.es/.test(source.url))).toBe(
       true,
     );
@@ -187,6 +425,7 @@ describe("Spain Legal MCP server", () => {
         income_source: "employee",
         intent: "work",
         has_eu_family_link: true,
+        sponsor_nationality:"FR",
         eu_family_relationship: "spouse_or_registered_partner",
       },
     });
@@ -318,6 +557,7 @@ describe("Spain Legal MCP server", () => {
       booking_url: string;
       intake_fields: Array<{ key: string; status: string; required: boolean }>;
       agent_handoff_message: string;
+      suggested_follow_up_tools: string[];
       related_resource_uris: string[];
       references: Array<{ url: string }>;
     };
@@ -326,7 +566,9 @@ describe("Spain Legal MCP server", () => {
     expect(structured.representation_notice).toMatch(/does not by itself create/i);
     expect(structured.recommended_service.title).toMatch(/EU Family Member Card|Contact/i);
     expect(structured.recommended_service.url).toMatch(/^https:\/\/legalfournier\.com\//);
-    expect(structured.booking_url).toMatch(/^https:\/\/cal\.com\//);
+    expect(structured.booking_url).toBe(
+      "https://legalfournier.com/en/agent-book-consultation/?utm_source=mcp&utm_medium=agent&utm_campaign=handoff",
+    );
     expect(structured.intake_fields.some((field) => field.key === "case_summary")).toBe(true);
     expect(
       structured.intake_fields.some(
@@ -334,10 +576,51 @@ describe("Spain Legal MCP server", () => {
       ),
     ).toBe(true);
     expect(structured.agent_handoff_message).toMatch(/Urgency: soon/i);
+    expect(structured.suggested_follow_up_tools).toContain(
+      "get_paid_consultation_options",
+    );
     expect(structured.related_resource_uris).toContain(
       makeTopicResourceUri("legal-fournier-handoff"),
     );
+    expect(structured.related_resource_uris).toContain(makeTopicResourceUri("tool-screeners"));
     expect(structured.references.some((reference) => /legal-notice/.test(reference.url))).toBe(true);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("uses French handoff language and localized contact URL when requested", async () => {
+    const { server, client } = await connectPair();
+
+    const result = await client.callTool({
+      name: "route_to_legal_fournier_help",
+      arguments: {
+        area: "visa_planning",
+        urgency: "soon",
+        blockers: ["route depends on family facts"],
+        preferred_language: "fr",
+      },
+    });
+
+    const structured = result.structuredContent as {
+      recommended_service: { url: string; title: string };
+      booking_url: string;
+      agent_handoff_message: string;
+      intake_fields: Array<{ key: string; value: string }>;
+    };
+
+    expect(structured.recommended_service.title).toBe("Contact Legal Fournier");
+    expect(structured.recommended_service.url).toBe(
+      "https://legalfournier.com/fr/contact/?utm_source=mcp&utm_medium=agent&utm_campaign=handoff",
+    );
+    expect(structured.booking_url).toBe(
+      "https://legalfournier.com/en/agent-book-consultation/?utm_source=mcp&utm_medium=agent&utm_campaign=handoff",
+    );
+    expect(structured.agent_handoff_message).toMatch(/french-language intake/i);
+    expect(
+      structured.intake_fields.some(
+        (field) => field.key === "preferred_language" && field.value === "fr",
+      ),
+    ).toBe(true);
 
     await Promise.all([client.close(), server.close()]);
   });
@@ -457,6 +740,31 @@ describe("Spain Legal MCP server", () => {
     expect(text).toMatch(/## Legal Notice For Agents/i);
     expect(text).toMatch(/not individualized legal or tax advice/i);
     expect(text).toMatch(/does not by itself create a lawyer-client/i);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("reads skill resources with workflow and tool mapping", async () => {
+    const { server, client } = await connectPair();
+
+    const [indexResult, skillResult] = await Promise.all([
+      client.readResource({
+        uri: SKILLS_INDEX_URI,
+      }),
+      client.readResource({
+        uri: makeSkillResourceUri("beckham-precheck"),
+      }),
+    ]);
+
+    const indexText = "text" in indexResult.contents[0] ? indexResult.contents[0].text : "";
+    const skillText = "text" in skillResult.contents[0] ? skillResult.contents[0].text : "";
+
+    expect(indexText).toMatch(/# Spain Legal Skills/i);
+    expect(indexText).toMatch(/visa-intake-triage/i);
+    expect(skillText).toMatch(/# Beckham Precheck/i);
+    expect(skillText).toMatch(/## Workflow/i);
+    expect(skillText).toMatch(/## Recommended Tools/i);
+    expect(skillText).toMatch(/check_beckham_eligibility/i);
 
     await Promise.all([client.close(), server.close()]);
   });

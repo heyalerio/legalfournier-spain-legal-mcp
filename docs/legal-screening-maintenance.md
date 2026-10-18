@@ -1,0 +1,25 @@
+# Legal screening changes — 18 October 2026
+
+This release fixes the unsafe conclusions reproduced in MCP-01/02/06/07/08/09/11/12/13/18. It also fixes the unrelated-result issue in the public tool finder (MCP-04). Native and REST callers share the same contracts.
+
+- Nationality accepts ISO alpha-2/alpha-3 and supported translated country names. Unrecognized, ambiguous or territorial labels stay unresolved. Spanish citizens have a separate result without a foreigner-registration recommendation.
+- Family routing asks for sponsor nationality and Spanish sponsors' free-movement history. RD 1155/2024 family residence is separate from RD 240/2007. A qualifying returning Spanish sponsor can support alternative routes; no EU-family card is inferred from a family flag alone.
+- Nationality timing uses explicitly supplied qualifying legal-residence years and confirmed continuity. Student stays, irregular status and unresolved absences cannot produce a positive nationality eligibility field.
+- Beckham screening requires the move year, confirmed prior tax-year history, qualifying activity, relocation link, exclusions and election timing. HQP economic activities need the statutory activity and remuneration mix; directors need the entity/related-party tests. Regime comparisons cannot prefer Beckham while its availability is unresolved.
+- Income screens require disjoint EUR income sources, a monthly/annual period, distinct accompanying-family members and a date. Annual amounts are divided by 12; first-family-member treatment is relationship-neutral. Mixed employee/self-employed income stays subject to review. A shortfall is reflected in the structured outcome.
+- Property screens use explicit location, type, whole-property ownership, confirmed taxable value and transaction date. Verified general resale schedules cover Catalonia, Madrid and Andalusia. Other regions, new builds, partial ownership and special/reduced treatment produce a review request rather than an invented exact estimate. Tax estimates exclude fees.
+- Generic intake numbers are displayed without interpreting currency, periods or household totals. Unknown facts remain missing; negated risk statements do not become asserted risks. Property, business, wealth, inheritance, appointments, Spanish-family and general handoffs have relevant preparation guidance.
+
+## Source decisions
+
+The [2026 SMI decree](https://www.boe.es/buscar/act.php?id=BOE-A-2026-3815), [UGE teleworker guidance](https://www.inclusion.gob.es/documents/d/unidadgrandesempresas/nomadas-digitales-faqs-espanol) and [Washington consular instructions](https://www.exteriores.gob.es/Consulados/washington/en/ServiciosConsulares/Paginas/Consular/Telework-Visa.aspx) support the EUR 1,221 monthly SMI basis and EUR 2,442 principal income screen. The code does not substitute a 14/12 annualisation. Family additions retain the exact 75% and 25% arithmetic (EUR 915.75 and EUR 305.25); filing-office rounding and evidence requirements must still be checked.
+
+The [Catalonia schedule](https://atc.gencat.cat/es/tributs/itpajd/tpo/tarifes-tipus/) effective 27 June 2025 gives EUR 105,000 general transfer tax on EUR 1 million. [Madrid's current guidance](https://www.comunidad.madrid/atencion-contribuyente/transmisiones-patrimoniales-onerosas) confirms 6%; its [amending law](https://www.boe.es/buscar/doc.php?id=BOE-A-2014-3254) took effect 1 January 2014. [Andalusia's official guidance](https://www.juntadeandalucia.es/organismos/atrian/areas/informacion-tributaria/impuestos/preguntas-frecuentes/impuestos-transmisiones-actos/autoliquidar.html) confirms the 7% general rate from 28 April 2021. Historical special rules and all other regions are not certified by this release.
+
+Family distinctions follow [SEM 2/2025](https://inclusion.gob.es/documents/d/migraciones/instrucciones-sem-2-2025-sobre-la-residencia-temporal-de-familiares-de-personas-con-nacionalidad-espanola) and [RD 1155/2024](https://www.boe.es/buscar/act.php?id=BOE-A-2024-24099). Nationality continuity follows [Civil Code article 22](https://www.boe.es/buscar/act.php?id=BOE-A-1889-4763#art22). Beckham conditions follow [AEAT's article 93 guidance](https://sede.agenciatributaria.gob.es/Sede/ayuda/manuales-videos-folletos/manuales-practicos/manual-tributacion-no-residentes/regimenes-opcionales/regimen-especial-impatriados.html).
+
+## Validation and maintenance
+
+`src/legal-regression.test.ts` contains 59 legal regression cases, including bracket boundaries, equivalent units, missing/contradictory facts and handoff coverage. API tests additionally exercise the shared contracts.
+
+The 2026 DNV schedule and supported property calculations do not extrapolate beyond 31 December 2026. Update verified schedules and boundary tests before opening another period. Source modification timestamps are distinct from legal review dates; a code revision does not mark every bundled resource as legally re-reviewed. No blog text, live contact request or client record was changed by these legal-code tests.

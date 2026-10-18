@@ -1,0 +1,195 @@
+function lf_process_agent_lead(WP_REST_Request $request, $operation) {
+    $body = (string) $request->get_body();
+
+    if (!lf_verify_agent_lead_signature($body, $request->get_header('x-lf-agent-timestamp'), $request->get_header('x-lf-agent-signature'))) {
+        return new WP_REST_Response(array('ok' => false, 'message' => 'Invalid agent lead signature.'), 401);
+    }
+
+    $payload = json_decode($body, true);
+    if (!is_array($payload)) {
+        return new WP_REST_Response(array('ok' => false, 'message' => 'Invalid JSON payload.'), 400);
+    }
+
+    if (!lf_agent_lead_bool($payload['confirmed_consent'] ?? false) || !lf_agent_lead_bool($payload['consent_to_contact'] ?? false)) {
+        return new WP_REST_Response(array(
+            'ok'      => false,
+            'message' => 'Agent leads require confirmed user consent and consent to contact.',
+        ), 400);
+    }
+
+    $name = lf_agent_lead_clean_text($payload['name'] ?? '', 160);
+    $email = sanitize_email((string) ($payload['email'] ?? ''));
+    $phone = lf_agent_lead_clean_text($payload['phone'] ?? '', 80);
+    $preferred_language = sanitize_key((string) ($payload['preferred_language'] ?? 'en'));
+    if (!in_array($preferred_language, array('en', 'es', 'fr'), true)) {
+        $preferred_language = 'en';
+    }
+    $legal_area = sanitize_key((string) ($payload['legal_area'] ?? 'other'));
+    $case_summary = lf_agent_lead_clean_text($payload['case_summary'] ?? '', 3000);
+    $agent_handoff_message = lf_agent_lead_clean_text($payload['agent_handoff_message'] ?? '', 3000);
+    $urgency = sanitize_key((string) ($payload['urgency'] ?? 'normal'));
+    if (!in_array($urgency, array('normal', 'soon', 'urgent'), true)) {
+        $urgency = 'normal';
+    }
+    $source_surface = sanitize_key((string) ($payload['source_surface'] ?? 'mcp'));
+    $agent_app = lf_agent_lead_clean_text($payload['agent_app'] ?? '', 120);
+    $tool_name = sanitize_key((string) ($payload['tool_name'] ?? 'create_legal_fournier_contact_request'));
+    $source_url = !empty($payload['source_url']) ? esc_url_raw((string) $payload['source_url']) : home_url('/en/mcp/spain-legal/');
+    $referrer_url = !empty($payload['referrer_url']) ? esc_url_raw((string) $payload['referrer_url']) : '';
+    $request_ip_hash = sanitize_text_field((string) ($payload['request_ip_hash'] ?? ''));
+    $agent_caller_ip = sanitize_text_field((string) ($payload['agent_caller_ip'] ?? ''));
+    $agent_caller_ip_source = sanitize_key((string) ($payload['agent_caller_ip_source'] ?? ''));
+    $agent_caller_country = strtoupper(sanitize_text_field((string) ($payload['agent_caller_country'] ?? '')));
+    if (!preg_match('/^(?:[A-Z]{2}|T1|XX)$/', $agent_caller_country)) {
+        $agent_caller_country = '';
+    }
+    $agent_caller_proxy_chain = lf_agent_lead_clean_text($payload['agent_caller_proxy_chain'] ?? '', 500);
+    $agent_caller_user_agent = lf_agent_lead_clean_text($payload['agent_caller_user_agent'] ?? '', 300);
+    $agent_caller_client_key = lf_agent_lead_clean_text($payload['agent_caller_client_key'] ?? '', 80);
+    $risk_flags = lf_agent_lead_clean_array($payload['risk_flags'] ?? array());
+    $missing_facts = lf_agent_lead_clean_array($payload['missing_facts'] ?? array());
+    $related_resource_uris = lf_agent_lead_clean_array($payload['related_resource_uris'] ?? array(), 12, 260);
+    $tool_context = lf_agent_lead_clean_text($payload['tool_context'] ?? '', 1600);
+    $lead_id = $operation['lead_id'];
+
+    if ($name === '' || $email === '' || !is_email($email) || $case_summary === '') {
+        return new WP_REST_Response(array(
+            'ok'      => false,
+            'message' => 'Name, valid email, and case_summary are required.',
+        ), 400);
+    }
+
+    if ($request_ip_hash !== '' && !lf_agent_lead_rate_limit_ok('ip:' . $request_ip_hash, 8, HOUR_IN_SECONDS)) {
+        return new WP_REST_Response(array('ok' => false, 'message' => 'Too many agent lead requests from this source.'), 429);
+    }
+
+    if (!lf_agent_lead_rate_limit_ok('email:' . strtolower($email), 3, DAY_IN_SECONDS)) {
+        return new WP_REST_Response(array('ok' => false, 'message' => 'Too many recent agent lead requests for this email.'), 429);
+    }
+
+    $attribution = array(
+        'partnero_partner' => '',
+        'utm_source'       => 'agent',
+        'utm_medium'       => $source_surface !== '' ? $source_surface : 'mcp',
+        'utm_campaign'     => 'spain_legal_agent_lead',
+        'utm_term'         => $agent_app,
+        'utm_content'      => $tool_name,
+        'landing_url'      => $source_url,
+        'referrer_url'     => $referrer_url,
+        'service_slug'     => sanitize_title($legal_area),
+        'lead_id'          => $lead_id,
+        'page_type'        => 'agent_mcp',
+        'page_lang'        => $preferred_language,
+        'cta_location'     => 'agent-lead',
+        'page_variant'     => $source_surface !== '' ? $source_surface : 'mcp',
+    );
+
+    $field_snapshot = array(
+        'Agent Lead'             => 'Yes',
+        'Name'                   => $name,
+        'Email'                  => $email,
+        'Phone'                  => $phone,
+        'Preferred Language'     => $preferred_language,
+        'Legal Area'             => $legal_area,
+        'Urgency'                => $urgency,
+        'Case Summary'           => $case_summary,
+        'Agent Handoff Message'  => $agent_handoff_message,
+        'Risk Flags'             => implode('; ', $risk_flags),
+        'Missing Facts'          => implode('; ', $missing_facts),
+        'Related MCP Resources'  => implode('; ', $related_resource_uris),
+        'Tool Context'           => $tool_context,
+        'Source Surface'         => $source_surface,
+        'Agent App'              => $agent_app,
+        'Tool Name'              => $tool_name,
+        'Agent Caller IP'        => $agent_caller_ip,
+        'Agent Caller IP Source' => $agent_caller_ip_source,
+        'Agent Caller Country'   => $agent_caller_country,
+        'Agent Caller IP Hash'   => $request_ip_hash,
+        'Agent Caller Client Key' => $agent_caller_client_key,
+        'Agent Caller User Agent' => $agent_caller_user_agent,
+        'Agent Caller Proxy Chain' => $agent_caller_proxy_chain,
+        'Consent To Contact'     => 'Yes',
+        'Consent Timestamp'      => current_time('mysql'),
+        'Sensitive Data Warning' => 'Agent endpoint instructed not to collect passport numbers, ID numbers, documents, full addresses, or sensitive facts unless necessary for human review.',
+    );
+    $email_veracity = lf_agent_lead_email_veracity_check($email, $field_snapshot);
+    $agent_spam_reasons = lf_agent_lead_spam_reasons($email, $field_snapshot, $email_veracity);
+    $agent_spam_blocked_reason = '';
+    if (!empty($agent_spam_reasons)) {
+        $email_veracity['ok'] = false;
+        $email_veracity['status'] = 'blocked';
+        $email_veracity['reasons'] = array_values(array_unique(array_merge(
+            !empty($email_veracity['reasons']) && is_array($email_veracity['reasons']) ? $email_veracity['reasons'] : array(),
+            $agent_spam_reasons
+        )));
+        $agent_spam_blocked_reason = 'MCP synthetic spam: ' . implode(', ', $agent_spam_reasons);
+    }
+    $agent_lead_notifications_allowed = lf_agent_lead_email_veracity_allows_notifications($email_veracity);
+    $field_snapshot['Agent Email Veracity Check'] = lf_agent_lead_email_veracity_label($email_veracity);
+    $field_snapshot['Agent Autoresponse Eligibility'] = $agent_lead_notifications_allowed ? 'eligible' : 'suppressed';
+    $field_snapshot['Agent Internal Alert Eligibility'] = $agent_lead_notifications_allowed ? 'eligible' : 'suppressed';
+    $field_snapshot = lf_add_structured_fields_to_snapshot($field_snapshot, 'contact', $attribution);
+
+    $form_data = array(
+        'id'       => 0,
+        'settings' => array('form_title' => 'Agent Lead Request'),
+    );
+
+    lf_agent_lead_operation_claim($operation);
+
+    $entry_id = lf_insert_form_entry($field_snapshot, $form_data, $source_url, 'contact', $attribution, $agent_spam_blocked_reason);
+    if ($entry_id < 1) {
+        return new WP_REST_Response(array('ok' => false, 'message' => 'Unable to create agent lead.'), 500);
+    }
+    if ($agent_spam_blocked_reason !== '') {
+        lf_update_lead_outcome($entry_id, 'spam_mcp');
+    }
+
+    $response = array(
+        'ok'                    => true,
+        'entry_id'              => $entry_id,
+        'lead_id'               => $lead_id,
+        'lead_status'           => 'created',
+        'email_veracity_status' => !empty($email_veracity['status']) ? (string) $email_veracity['status'] : 'unknown',
+        'notifications_suppressed' => !$agent_lead_notifications_allowed,
+        'admin_queue'           => 'Lead Entries > Accepted Leads: Forms and Bookings',
+        'source'                => 'agent',
+        'source_surface'        => $source_surface,
+        'message'               => 'Agent lead created in the Legal Fournier leads view.',
+        'representation_notice' => 'Submitting a contact request does not by itself create a lawyer-client or professional advisory relationship. Representation starts only after Legal Fournier expressly accepts the matter.',
+    );
+
+    $response['notification_status'] = 'pending';
+    lf_agent_lead_operation_save($operation, $response);
+
+    lf_insert_frontend_event_log('agent_lead_created', $source_url, $attribution, array(
+        'source_surface' => $source_surface,
+        'agent_app'      => $agent_app,
+        'legal_area'     => $legal_area,
+        'urgency'        => $urgency,
+        'caller_country' => $agent_caller_country,
+        'caller_ip_source' => $agent_caller_ip_source,
+        'caller_client_key' => $agent_caller_client_key,
+    ));
+
+    if ($agent_lead_notifications_allowed) {
+        lf_send_entry_email($field_snapshot, $form_data, $source_url, 'contact', $attribution);
+    } else {
+        lf_add_webhook_log(array(
+            'ok'         => true,
+            'status'     => 0,
+            'attempt'    => 0,
+            'message'    => 'Suppressed internal agent lead alert: ' . lf_agent_lead_email_veracity_label($email_veracity),
+            'url'        => 'resend://agent-internal-alert-suppressed',
+            'form_name'  => 'Agent Lead Request',
+            'entry_type' => 'agent_internal_alert',
+        ));
+    }
+
+    lf_send_agent_lead_autoresponse($field_snapshot, $form_data, $source_url, $attribution, $email_veracity);
+
+
+    $response['notification_status'] = 'processed';
+    lf_agent_lead_operation_save($operation, $response);
+    return new WP_REST_Response($response, 201);
+}
