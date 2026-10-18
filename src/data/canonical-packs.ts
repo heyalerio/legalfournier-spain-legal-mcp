@@ -21,7 +21,8 @@ export type TopicId =
   | "tax-regimes"
   | "eu-family-route-check"
   | "nationality-continuity"
-  | "legal-fournier-handoff";
+  | "legal-fournier-handoff"
+  | "tool-screeners";
 export type PackCollectionKind = "routes" | "processes" | "tracks" | "topics";
 export type PackKind = "route" | "process" | "track" | "topic";
 
@@ -79,7 +80,12 @@ type RoutePackExtras = Pick<
     >
   >;
 
-const LAST_MODIFIED = "2026-03-25T00:00:00Z";
+const LAST_MODIFIED = "2026-05-13T00:00:00Z";
+// These dates describe changed source content, not a new legal review of all packs.
+const REVISED_PACK_IDS = new Set(["spanish-national-family", "eu-family-member-card", "eu-family-route-check", "beckham-regime"]);
+export function getPackModifiedAt(pack: CanonicalPack): string {
+  return REVISED_PACK_IDS.has(pack.id) ? "2026-10-18T22:30:00Z" : LAST_MODIFIED;
+}
 
 export const CATALOG_URI = "legalfournier://spain-legal/catalog";
 export const ROUTE_TEMPLATE_URI = "legalfournier://spain-legal/routes/{route_id}";
@@ -92,7 +98,7 @@ function reference(label: string, url: string, reason: string): SecondaryReferen
   return { label, url, reason };
 }
 
-export function getAssistantAnnotations(priority = 1): {
+export function getAssistantAnnotations(priority = 1, lastModified = LAST_MODIFIED): {
   audience: ("assistant" | "user")[];
   priority: number;
   lastModified: string;
@@ -100,7 +106,7 @@ export function getAssistantAnnotations(priority = 1): {
   return {
     audience: ["assistant"],
     priority,
-    lastModified: LAST_MODIFIED,
+    lastModified,
   };
 }
 
@@ -186,6 +192,7 @@ export const ROUTE_PACKS: Record<RouteId, CanonicalPack> = {
       "Use when the applicant is non-EU but the main residence theory depends on joining or accompanying an EU, EEA, or Swiss family member in Spain.",
     key_rules: [
       "This is a community-regime residence branch for qualifying non-EU family members, not a standard third-country work or passive-income route.",
+      "Check a Spanish sponsor separately: the RD 1155/2024 family regime is distinct, and an EU-family alternative needs qualifying free-movement facts.",
       "The relationship type and the EU citizen's own residence basis both matter.",
       "Family-status changes can trigger retention or loss questions that need their own review.",
     ],
@@ -242,6 +249,17 @@ export const ROUTE_PACKS: Record<RouteId, CanonicalPack> = {
         "General relocation context while the community-regime branch is clarified.",
       ),
     ],
+  }),
+  "spanish-national-family": routePack("spanish-national-family", {
+    agent_use:"Use for a non-EU applicant linked to a Spanish sponsor; identify free-movement history before choosing the procedure.",
+    key_rules:["From 20 May 2025, RD 1155/2024 articles 93–99 provide a distinct route for qualifying family members of Spanish nationals.", "A Spanish sponsor without qualifying free movement does not automatically put the case into RD 240/2007.", "Relatives of a returning Spanish sponsor who exercised qualifying free movement may choose the Spanish route or the EU-family alternative, subject to the relevant conditions."],
+    red_flags:["Treating all Spanish family cases as EU-family cards.", "Inferring dependency, relationship eligibility or preserved rights from the family label alone."],
+    next_actions:["Confirm sponsor nationality, exact relationship, dependency where required and prior free-movement residence.", "Review the filing location, existing permits and transitional rules before selecting the application."],
+    article_pinpoints:["RD 1155/2024 arts. 93–99 govern the separate Spanish-national-family route.", "SEM 2/2025, first instruction, explains regime selection, transition cases and returning Spanish sponsors."],
+    follow_up_tools:["get_visa_options", "route_to_legal_fournier_help"],
+    official_legal_sources:officialSources("rd1155_spanish_family", "sem2_2025_spanish_family", "rd240_family_card"),
+    current_verification_flags:verificationFlags("eu_family_facts", "continuity_and_absences"),
+    secondary_references:[reference("Legal Fournier contact", SITE_URLS.contact, "Family-route review for the precise sponsor and relationship facts.")],
   }),
   "digital-nomad-visa": routePack("digital-nomad-visa", {
     agent_use:
@@ -1012,8 +1030,9 @@ export const TOPIC_PACKS: Record<TopicId, CanonicalPack> = {
     agent_use:
       "Read before giving any direct answer on Beckham eligibility or value.",
     key_rules: [
-      "A sufficient non-residency gap is a threshold question.",
+      "Check non-residence in each of the five tax periods before the move year; an elapsed-year gap alone is insufficient.",
       "The employment or relocation structure must fit one of the recognized entry paths.",
+      "The highly qualified economic-activity path requires eligible startup services or qualifying training, research, development or innovation, with the required remuneration share above 40%.",
       "Director cases need entity-type and related-party analysis, so a flat ownership shortcut is not enough.",
       "Ordinary self-employment does not equal a qualifying entrepreneur path without current approval logic.",
     ],
@@ -1023,9 +1042,9 @@ export const TOPIC_PACKS: Record<TopicId, CanonicalPack> = {
       "Highly qualified or qualifying director profile.",
     ],
     red_flags: [
-      "Insufficient non-residency gap.",
+      "Spanish tax residence in any of the five prior tax periods, or an incomplete year-by-year history.",
       "Ordinary self-employment with no qualifying entrepreneur angle.",
-      "Director control above the cleaner ownership band.",
+      "A director's patrimonial-entity and related-party shareholding tests have not been resolved.",
     ],
     next_actions: [
       "Run check_beckham_eligibility before promising any tax result.",
@@ -1116,6 +1135,7 @@ export const TOPIC_PACKS: Record<TopicId, CanonicalPack> = {
       "Read when an EU family link appears in a non-EU move-to-Spain case.",
     key_rules: [
       "An EU family link can change the route analysis materially.",
+      "Ask for sponsor nationality. A Spanish sponsor without qualifying free movement has a separate RD 1155/2024 family route; a returning sponsor may have alternative routes under SEM 2/2025.",
       "This branch should be checked before locking in a standard non-EU route recommendation.",
     ],
     decision_cues: [
@@ -1138,6 +1158,8 @@ export const TOPIC_PACKS: Record<TopicId, CanonicalPack> = {
     ],
     follow_up_tools: ["get_visa_options", "route_to_legal_fournier_help"],
     official_legal_sources: officialSources(
+      "rd1155_spanish_family",
+      "sem2_2025_spanish_family",
       "rd240_family_card",
       "rd240_family_retention",
       "rd240_permanent",
@@ -1201,6 +1223,141 @@ export const TOPIC_PACKS: Record<TopicId, CanonicalPack> = {
         "Nationality by Residence service",
         SITE_URLS.serviceNationality,
         "Firm page for cases that need continuity-sensitive nationality review.",
+      ),
+    ],
+  },
+  "tool-screeners": {
+    kind: "topic",
+    id: "tool-screeners",
+    uri: makeTopicResourceUri("tool-screeners"),
+    title: "Legal Fournier Tool Screeners",
+    summary:
+      "Canonical pack for using the public Legal Fournier tool pages as agent-facing pre-screeners before a human legal handoff.",
+    agent_use:
+      "Read when an agent needs to choose a public calculator or screener for a Spain immigration, tax, property, company, or private-client matter.",
+    key_rules: [
+      "The tools are screening and intake aids; they do not replace legal or tax advice.",
+      "Use find_legal_fournier_tool when an agent needs to choose the best public calculator or screener for a case.",
+      "Use run_legal_fournier_tool when the agent needs the public tool's intake screen to work directly inside MCP before linking to the website.",
+      "Use the MCP tool outputs first when the user needs structured route logic, then send the user to the matching public screener if they need an interactive page or intake context.",
+      "Custom facts, unusual income, family, company, property, or deadline notes should be preserved in the consultation handoff.",
+      "Golden Visa should be treated as ended; current route-finder logic should point investors to alternatives rather than a real-estate Golden Visa path.",
+    ],
+    decision_cues: [
+      "User wants a self-serve calculator before booking a consultation.",
+      "User asks about high-income relocation, Beckham Law, remote work, Spanish tax residency, property purchase costs, wealth/inheritance exposure, founder setup, holding company risk, or immigration appointments.",
+      "Agent needs a website URL that keeps analytics and consultation flow on Legal Fournier rather than bypassing the site.",
+    ],
+    red_flags: [
+      "Treating the tool result as filing-ready legal advice.",
+      "Sending complex private-client facts to a generic contact link without preserving the tool summary.",
+      "Recommending the Golden Visa as if it were still available.",
+    ],
+    next_actions: [
+      "When the right public page is not obvious, run find_legal_fournier_tool with the user goal, area, language, and complexity signals.",
+      "When the user cannot or should not leave the agent workflow yet, run run_legal_fournier_tool with the tool_id and known facts.",
+      "For route selection, run get_visa_options and then use the Best Visa for Spain tool if the user wants a public page.",
+      "For tax planning, run compare_tax_regimes or check_beckham_eligibility, then use the Beckham, Digital Nomad Visa tax, or tax-residency tools as matching public screeners.",
+      "For complex facts, call route_to_legal_fournier_help and use the agent booking URL for paid-consultation handoff.",
+    ],
+    edge_case_notes: [
+      "The public tool pages now include visible changelog/update logs so agents can see when a government or legal update was last mapped.",
+      "The remote-work and tax-residency pages are interactive screeners in English, Spanish, and French; high-income private-client calculators are currently English-first.",
+      "Currency, SMI, property-market, appointment-office, and tax filing details remain live-verification points.",
+    ],
+    follow_up_tools: [
+      "find_legal_fournier_tool",
+      "run_legal_fournier_tool",
+      "get_visa_options",
+      "check_beckham_eligibility",
+      "compare_tax_regimes",
+      "route_to_legal_fournier_help",
+    ],
+    official_legal_sources: officialSources(
+      "ley14_telework",
+      "irpf_art93",
+      "irpf_reg_art113",
+      "irpf_reg_art115",
+      "rd1155_non_lucrative",
+      "rd1155_self_employed",
+    ),
+    current_verification_flags: verificationFlags(
+      "salary_or_income_thresholds",
+      "consular_thresholds",
+      "tax_entry_path",
+      "tax_deadlines",
+      "office_level_practice",
+    ),
+    secondary_references: [
+      reference(
+        "Legal tools hub",
+        SITE_URLS.tools,
+        "Main public hub for Legal Fournier tools and screeners.",
+      ),
+      reference(
+        "Find Your Best Visa for Spain",
+        SITE_URLS.visaEligibilityTool,
+        "Public route-finder for immigration route screening.",
+      ),
+      reference(
+        "Digital Nomad Visa eligibility calculator",
+        SITE_URLS.digitalNomadTool,
+        "Public DNV income and document screener.",
+      ),
+      reference(
+        "Digital Nomad Visa tax and income calculator",
+        SITE_URLS.digitalNomadTaxTool,
+        "Public combined DNV, income, and Beckham timing screener.",
+      ),
+      reference(
+        "Beckham Law Spain calculator",
+        SITE_URLS.beckhamCalculator,
+        "Public high-income tax-regime calculator.",
+      ),
+      reference(
+        "Spanish tax residency screener",
+        SITE_URLS.taxResidencyTool,
+        "Public 183-day, family, economic-interest, and foreign-asset screener.",
+      ),
+      reference(
+        "Remote work from Spain screener",
+        SITE_URLS.remoteWorkTool,
+        "Public remote-work, immigration route, and tax-risk screener.",
+      ),
+      reference(
+        "Spanish property purchase costs calculator",
+        SITE_URLS.propertyCostTool,
+        "Public property buyer cost and risk calculator.",
+      ),
+      reference(
+        "Spanish inheritance and wealth exposure checker",
+        SITE_URLS.wealthInheritanceTool,
+        "Public private-client exposure screener.",
+      ),
+      reference(
+        "Autonomo vs SL Spain planner",
+        SITE_URLS.autonomoSlTool,
+        "Public founder and company-setup planner.",
+      ),
+      reference(
+        "Spain permanent establishment risk checker",
+        SITE_URLS.permanentEstablishmentTool,
+        "Public foreign company, dependent agent, Spain management, fixed-place, and project-duration risk checker.",
+      ),
+      reference(
+        "Spain holding company and ETVE eligibility checker",
+        SITE_URLS.holdingCompanyTool,
+        "Public holding, ETVE, company, property, substance, and management-location risk checker.",
+      ),
+      reference(
+        "Immigration appointments Spain",
+        SITE_URLS.immigrationAppointmentsTool,
+        "Public appointment type and procedure screener.",
+      ),
+      reference(
+        "Agent consultation booking",
+        SITE_URLS.consultationBooking,
+        "Noindex English booking flow for agent handoff, paid consultation scheduling, and analytics.",
       ),
     ],
   },
@@ -1350,6 +1507,7 @@ export function renderCanonicalPackMarkdown(pack: CanonicalPack): string {
     `# ${pack.title}`,
     "",
     `**Kind:** ${pack.kind}`,
+    `**Source modified:** ${getPackModifiedAt(pack)} (source revision, not a guarantee of current legal review)`,
     `**Resource URI:** \`${pack.uri}\``,
     "",
     pack.summary,
@@ -1449,7 +1607,7 @@ export function listPackResources(kind: PackCollectionKind) {
     title: pack.title,
     description: pack.summary,
     mimeType: "text/markdown",
-    annotations: getAssistantAnnotations(1),
+    annotations: getAssistantAnnotations(1, getPackModifiedAt(pack)),
   }));
 }
 

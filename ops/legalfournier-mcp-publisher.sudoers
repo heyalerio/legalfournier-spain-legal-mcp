@@ -1,0 +1,1 @@
+hermes ALL=(root) NOPASSWD: /usr/local/sbin/legalfournier-refresh-mcp-content ""

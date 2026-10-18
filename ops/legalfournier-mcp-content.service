@@ -1,0 +1,29 @@
+[Unit]
+Description=Refresh published Legal Fournier articles and videos for the public MCP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=lf-mcp-publisher
+Group=lf-mcp-publisher
+ExecStart=/usr/bin/python3 /opt/lf-spainlegal/scripts/sync-content-index.py --output /var/lib/lf-spainlegal-content/content-index.json
+StateDirectory=lf-spainlegal-content
+StateDirectoryMode=0755
+UMask=0022
+TimeoutStartSec=180
+MemoryMax=256M
+TasksMax=16
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lf-spainlegal-content
+InaccessiblePaths=/var/www /etc/legalfournier /var/lib/lf-spainlegal
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

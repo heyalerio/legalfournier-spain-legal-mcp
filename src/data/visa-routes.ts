@@ -3,6 +3,7 @@ import { SITE_URLS } from "./site.js";
 export type RouteId =
   | "eu-registration"
   | "eu-family-member-card"
+  | "spanish-national-family"
   | "digital-nomad-visa"
   | "non-lucrative-visa"
   | "work-permit-employees"
@@ -52,6 +53,14 @@ export const ROUTE_DEFINITIONS: Record<RouteId, RouteDefinition> = {
       "Non-EU dependent child or dependent ascendant joining a qualifying EU family member.",
     ],
     siteUrl: SITE_URLS.serviceEuFamilyMemberCard,
+  },
+  "spanish-national-family": {
+    id:"spanish-national-family",
+    title:"Residence for Family Members of Spanish Nationals",
+    summary:"Separate residence authorization for qualifying relatives of Spanish citizens under RD 1155/2024, articles 93–99.",
+    evergreenRequirements:["A qualifying relationship under article 94 and proof of the Spanish sponsor's nationality.", "Dependency and other category-specific conditions where required.", "Review of the sponsor's free-movement history, filing location and any existing family residence rights."],
+    commonUseCases:["A non-EU family member joining a Spanish citizen who has not exercised EU free movement.", "A returning Spanish citizen's relative comparing the Spanish and qualifying EU-family alternatives."],
+    siteUrl:SITE_URLS.contact,
   },
   "digital-nomad-visa": {
     id: "digital-nomad-visa",

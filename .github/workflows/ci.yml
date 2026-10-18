@@ -1,0 +1,20 @@
+name: MCP checks
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: python3 -m unittest discover -s scripts -p 'test_content_sync.py'
+      - run: php -n ops/test-wordpress-idempotency.php
+      - run: npm audit --omit=dev --audit-level=moderate

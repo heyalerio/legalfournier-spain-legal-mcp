@@ -1,15 +1,14 @@
 {
   "name": "legalfournier-spain-legal",
-  "version": "0.2.5",
-  "description": "Spain legal MCP for visa screening, Beckham eligibility, residency and nationality paths, NIE/TIE process guidance, EU family routes, and Legal Fournier handoff.",
+  "version": "0.3.0",
+  "description": "Spain legal MCP for visa and residency screening, Beckham eligibility, NIE/TIE, nationality, EU family routes, tax-regime comparison, public Legal Fournier tool matching, structured handoff, and explicit-consent contact requests. Agents can also discover written email consultations and 45-minute calls, check live call availability, and use returned secure commerce endpoints after explicit user authorization.",
   "type": "module",
   "license": "MIT",
   "mcpName": "com.legalfournier/spain-legal",
   "homepage": "https://legalfournier.com/en/mcp/spain-legal/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/heyalerio/legalfournier-spain-legal-mcp.git",
-    "directory": "mcp/spain-legal"
+    "url": "git+https://github.com/heyalerio/legalfournier-spain-legal-mcp.git"
   },
   "keywords": [
     "mcp",
@@ -26,10 +25,11 @@
     "eu-family"
   ],
   "bin": {
-    "spain-legal": "./dist/index.js"
+    "spain-legal": "dist/index.js"
   },
   "files": [
     "dist",
+    "data",
     "README.md",
     "server.json"
   ],
@@ -43,19 +43,24 @@
     "dev:remote": "tsx src/index.ts remote",
     "dev:stdio": "tsx src/index.ts stdio",
     "generate:registry-auth": "./scripts/generate-http-auth.sh ./.well-known",
+    "telemetry:report": "node scripts/telemetry-report.mjs",
     "start": "node dist/index.js remote",
     "start:remote": "node dist/index.js remote",
     "start:stdio": "node dist/index.js stdio",
-    "test": "vitest run"
+    "test": "vitest run --maxWorkers=2",
+    "content:sync": "python3 scripts/sync-content-index.py",
+    "discovery:generate": "LF_MCP_TELEMETRY_ENABLED=0 node scripts/generate-discovery.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "zod": "^4.3.6"
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@types/express": "^5.0.3"
   }
 }
