@@ -6,9 +6,23 @@ import itertools
 import json
 from pathlib import Path
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+
+def registry_read(call, url):
+    """Bound transient read failures without retrying invalid registry results."""
+    for attempt in range(3):
+        try:
+            return call(url)
+        except (TimeoutError, ConnectionError):
+            if attempt == 2:
+                raise
+            delay = 2 ** (attempt + 1)
+            print(f'Registry read interrupted; retrying in {delay}s.', flush=True)
+            time.sleep(delay)
 
 
 def main():
@@ -161,7 +175,7 @@ def main():
         print('published_metadata PASS')
     if args.registry:
         url = 'https://registry.modelcontextprotocol.io/v0.1/servers?' + urllib.parse.urlencode({'search': manifest['name'], 'limit': 100})
-        status, data, _ = call(url)
+        status, data, _ = registry_read(call, url)
         latest = [entry['server'] for entry in data.get('servers', [])
                   if entry.get('server', {}).get('name') == manifest['name']
                   and entry.get('_meta', {}).get('io.modelcontextprotocol.registry/official', {}).get('isLatest')]
