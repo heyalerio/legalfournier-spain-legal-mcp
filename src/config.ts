@@ -7,7 +7,6 @@ export interface SpainLegalConfig {
   mcpPath: string;
   mcpPublicUrl: string;
   mcpAllowedHosts: string[];
-  mcpCorsOrigin: string;
   telemetryEnabled: boolean;
   telemetryDir: string;
   agentCommerceBaseUrl: string;
@@ -27,7 +26,6 @@ const DEFAULT_MCP_ALLOWED_HOSTS = [
   "127.0.0.1",
   "localhost",
 ];
-const DEFAULT_MCP_CORS_ORIGIN = "*";
 const DEFAULT_TELEMETRY_DIR = "data/telemetry";
 const DEFAULT_AGENT_COMMERCE_BASE_URL = "https://legalfournier.com";
 const DEFAULT_AGENT_LEAD_ENDPOINT =
@@ -100,7 +98,6 @@ export function getConfig(): SpainLegalConfig {
     mcpPublicUrl:
       process.env.LF_MCP_PUBLIC_URL ?? `${DEFAULT_SITE_BASE_URL}${mcpPath}`,
     mcpAllowedHosts: parseAllowedHosts(process.env.LF_MCP_ALLOWED_HOSTS),
-    mcpCorsOrigin: process.env.LF_MCP_CORS_ORIGIN ?? DEFAULT_MCP_CORS_ORIGIN,
     telemetryEnabled: parseBoolean(process.env.LF_MCP_TELEMETRY_ENABLED, true),
     telemetryDir: process.env.LF_MCP_TELEMETRY_DIR ?? DEFAULT_TELEMETRY_DIR,
     agentCommerceBaseUrl:
@@ -113,7 +110,7 @@ export function getConfig(): SpainLegalConfig {
 
 export const SERVER_NAME = "com.legalfournier/spain-legal";
 export const SERVER_TITLE = "Spain Legal by Legal Fournier";
-export const SERVER_VERSION = "0.3.0";
+export const SERVER_VERSION = "0.4.0";
 export const SERVER_DESCRIPTION =
   "Spain legal MCP for visa screening, Beckham eligibility, residency and nationality paths, NIE/TIE process guidance, EU family routes, live paid-consultation discovery and call availability, Legal Fournier tool screeners, structured handoff, and explicit-consent contact requests with official Spanish legal sources.";
 export const SERVER_ICON_URL =

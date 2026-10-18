@@ -152,6 +152,13 @@ export function getContentIndexStatus() {
     };
 }
 
+/** Full validated snapshot, bounded by MAX_DOCUMENTS; never a search-result page. */
+export function getVerifiedContentVideoIds(): string[] {
+    return (loadIndex()?.documents ?? []).filter(document => document.type === "video"
+        && document.url === `https://www.youtube.com/watch?v=${document.id.slice(8)}`)
+        .map(document => document.id.slice(8));
+}
+
 function queryGroups(query: string): QueryGroup[] {
     const normalized = normalizeContentSearch(query);
     const groups: QueryGroup[] = terms(normalized).map(term => ({ term, variants: [term], topic: TERM_TO_TOPIC.get(term) }));

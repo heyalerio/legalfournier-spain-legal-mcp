@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Spain Legal by Legal Fournier Agent API",
-    "version": "0.3.0",
-    "description": "Spain legal screening and published Legal Fournier article/video retrieval, with official-source guidance and explicit-consent contact requests. Screening is preliminary; contact requests require explicit user consent. Use canonical citation URLs from search/fetch. Do not send identity documents or passport numbers.",
+    "version": "0.4.0",
+    "description": "Spain legal screening, published articles and videos, interactive Apps and public workflow skills, with official sources and explicit-consent contact requests. Screening is preliminary; contact requests require explicit user consent. Use canonical citation URLs from search/fetch. Do not send identity documents or passport numbers.",
     "contact": {
       "name": "Legal Fournier",
       "url": "https://legalfournier.com/en/mcp/spain-legal/"
@@ -61,6 +61,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "query": {
@@ -95,8 +96,7 @@
                     "minLength": 1,
                     "maxLength": 80
                   }
-                },
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                }
               }
             }
           }
@@ -113,6 +113,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "query": {
@@ -199,7 +200,6 @@
                         "resources",
                         "next_action"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -244,6 +244,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "id": {
@@ -266,8 +267,7 @@
                     "minimum": 1000,
                     "maximum": 40000
                   }
-                },
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                }
               }
             }
           }
@@ -284,6 +284,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "uri": {
@@ -340,7 +341,6 @@
                         "content_type",
                         "text"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -391,6 +391,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "query_summary": {
@@ -659,7 +660,6 @@
                         "agent_use_rules",
                         "legal_notice"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -688,6 +688,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "query": {
@@ -739,8 +740,7 @@
                     "minimum": 1,
                     "maximum": 12
                   }
-                },
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                }
               }
             }
           }
@@ -757,6 +757,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "query_summary": {
@@ -1025,7 +1026,6 @@
                         "agent_use_rules",
                         "legal_notice"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -1070,6 +1070,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "digital_nomad_income": {
@@ -1312,8 +1313,7 @@
                 },
                 "required": [
                   "tool_id"
-                ],
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                ]
               }
             }
           }
@@ -1330,6 +1330,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "numerical_status": {
@@ -1515,7 +1516,6 @@
                         "update_policy",
                         "legal_notice"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -1560,6 +1560,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "sponsor_nationality": {
@@ -1636,8 +1637,7 @@
                   "nationality",
                   "income_source",
                   "intent"
-                ],
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                ]
               }
             }
           }
@@ -1654,6 +1654,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "profile_summary": {
@@ -1967,7 +1968,6 @@
                         "related_resource_uris",
                         "references"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -2012,6 +2012,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "director_entity_is_patrimonial": {
@@ -2105,8 +2106,7 @@
                 "required": [
                   "employment_type",
                   "move_reason"
-                ],
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                ]
               }
             }
           }
@@ -2123,6 +2123,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "status": {
@@ -2355,7 +2356,6 @@
                         "related_resource_uris",
                         "references"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -2400,6 +2400,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "qualifying_legal_residence_years": {
@@ -2462,8 +2463,7 @@
                 "required": [
                   "current_status",
                   "years_in_spain"
-                ],
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                ]
               }
             }
           }
@@ -2480,6 +2480,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "summary": {
@@ -2717,7 +2718,6 @@
                         "related_resource_uris",
                         "references"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -2780,6 +2780,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "summary": {
@@ -3030,7 +3031,6 @@
                         "related_resource_uris",
                         "references"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -3075,6 +3075,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "beckham_assessment": {
@@ -3198,8 +3199,7 @@
                     "description": "Whether the applicant values a simpler, more predictable regime structure.",
                     "type": "boolean"
                   }
-                },
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                }
               }
             }
           }
@@ -3216,6 +3216,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "recommendation": {
@@ -3467,7 +3468,6 @@
                         "related_resource_uris",
                         "references"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -3512,6 +3512,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "area": {
@@ -3569,8 +3570,7 @@
                 },
                 "required": [
                   "area"
-                ],
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                ]
               }
             }
           }
@@ -3587,6 +3587,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "should_escalate": {
@@ -3780,7 +3781,6 @@
                         "related_resource_uris",
                         "references"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {
@@ -3825,6 +3825,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "confirmed_consent": {
@@ -3995,8 +3996,7 @@
                   "email",
                   "legal_area",
                   "case_summary"
-                ],
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                ]
               }
             }
           }
@@ -4013,6 +4013,7 @@
                       "const": true
                     },
                     "result": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "properties": {
                         "idempotency_key": {
@@ -4096,7 +4097,6 @@
                         "booking_url",
                         "next_actions"
                       ],
-                      "$schema": "http://json-schema.org/draft-07/schema#",
                       "additionalProperties": false
                     },
                     "legal_notice": {

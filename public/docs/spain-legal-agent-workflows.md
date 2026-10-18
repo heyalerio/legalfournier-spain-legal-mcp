@@ -2,6 +2,24 @@
 
 Use these examples when configuring ChatGPT Actions, Claude connectors, Codex, Cursor, VS Code/Copilot, Gemini CLI, Claude Code, Zapier, Make, n8n, or another non-MCP agent.
 
+## MCP Protocol, Apps and Skills
+
+The endpoint supports MCP `2026-07-28` and earlier clients using `initialize`.
+Modern clients can call `server/discover`; use the current SDK's version
+negotiation so request metadata and HTTP headers are sent consistently.
+
+Compatible MCP Apps hosts can display the article/video explorer and the income
+calculator inside the conversation. Other clients receive the same text and
+structured results. YouTube playback requires a click and host permission; a
+canonical video link remains available. Calculations provide preliminary
+screening and do not establish visa eligibility.
+
+The `io.modelcontextprotocol/skills` extension exposes five public workflows.
+Follow pagination in `skills/list`, obtain an entry with `skills/get`, and read
+its declared files through `resources/read`. Verify each file's byte size,
+SHA-256 digest and frontmatter before use. Skill discovery does not authorize
+contact requests, local execution or activation of another skill.
+
 ## Published Articles and Videos
 
 Use native MCP `search` or REST `searchSpainLegalResources` with a query and optional `language`, `type` (`article` or `video`) and `topic`. Fetch a returned ID with MCP `fetch` or REST `fetchSpainLegalResource`. Cite its canonical URL.

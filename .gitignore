@@ -16,3 +16,6 @@ node_modules
 # Publisher state; never package locks or private telemetry.
 data/.content-index-sync.lock
 **/__pycache__/
+
+# Local browser inspection artifacts.
+.playwright-cli/

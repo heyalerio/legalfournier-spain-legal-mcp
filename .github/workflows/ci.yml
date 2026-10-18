@@ -15,6 +15,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check
+      - run: npm run discovery:generate && node scripts/check-release-metadata.mjs
+      - name: Ensure committed discovery files match the build
+        run: git diff --exit-code -- public/.well-known/mcp/server-card.json public/.well-known/openapi/spain-legal-api.json
       - run: python3 -m unittest discover -s scripts -p 'test_content_sync.py'
       - run: php -n ops/test-wordpress-idempotency.php
       - run: npm audit --omit=dev --audit-level=moderate

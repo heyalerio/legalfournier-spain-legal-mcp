@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src '__SCRIPT_HASH__'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; frame-src https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'">
+  <title>Legal Fournier · Articles & videos</title>
+  <style>__APP_CSS__</style>
+</head>
+<body>
+  <main class="app" id="app">
+    <header class="masthead"><div class="wordmark">LEGAL <span>FOURNIER</span></div><span class="eyebrow">SPAIN, EXPLAINED</span></header>
+    <nav class="tabs" aria-label="Explore and calculate"><button id="tab-guides" type="button" aria-pressed="true">Articles & videos</button><button id="tab-income" type="button" aria-pressed="false">Digital nomad income</button></nav>
+    <section id="browse" aria-labelledby="browse-title">
+      <div class="intro"><h1 id="browse-title">A clearer path to Spain.</h1><p>Explore our published guides and videos.</p></div>
+      <form id="search-form" aria-label="Search articles and videos">
+        <div class="search-row"><label class="sr-only" for="query">Search topic</label><input id="query" name="query" type="search" placeholder="Try digital nomad, nationality or tax…" maxlength="500" autocomplete="off"><button id="search-button" class="primary" type="button" disabled>Search <span aria-hidden="true">→</span></button></div>
+        <div class="filters"><label>Language <select id="language" disabled><option value="">All languages</option><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="und">Video language unverified</option></select></label><label>Content <select id="content-type" disabled><option value="">Articles & videos</option><option value="article">Articles</option><option value="video">Videos</option><option value="resource">Legal guides</option></select></label></div>
+      </form>
+      <div class="result-topline"><p id="status" role="status" aria-live="polite">Connecting to your conversation…</p><span id="freshness"></span></div>
+      <div id="results" class="results" aria-label="Search results"></div>
+      <div id="empty" class="empty" hidden><span class="empty-symbol" aria-hidden="true">↗</span><h2>No matching guides yet.</h2><p>Try a broader topic or another language.</p></div>
+    </section>
+    <section id="reader" aria-label="Selected source" hidden>
+      <div class="reader-topline"><button type="button" id="back" class="text-button">← Back to results</button><div id="source-link"></div></div>
+      <p class="eyebrow" id="reader-type"></p><h1 id="reader-title" tabindex="-1"></h1><p class="reader-meta" id="reader-meta"></p>
+      <div id="video-slot"></div><div id="related-articles"></div><div id="reader-text" class="reader-text"></div>
+      <button type="button" id="load-more" class="secondary" hidden>Read more</button>
+    </section>
+    <section id="calculator" aria-labelledby="income-title" hidden>
+      <div class="intro"><h1 id="income-title">Check the income requirement.</h1><p>A digital nomad income screen, not a visa eligibility decision.</p></div>
+      <form id="income-form" class="income-form">
+        <div class="income-grid"><label>Income amount (€)<input id="income-amount" type="number" min="0" max="1000000000" step="0.01" placeholder="For example, 3500" required disabled></label><label>Income period<select id="income-period" disabled><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label><label>Income category<select id="income-category" disabled><option value="employment">Employment</option><option value="self_employment">Self-employment</option></select></label><label>Accompanying family members<input id="income-family" type="number" min="0" max="30" step="1" value="0" required disabled></label><label>Assessment date<input id="income-date" type="date" required disabled></label></div>
+        <p class="form-note">Count each person joining you once; exclude yourself. Use one income source in euros. Ask in the conversation about mixed income or whether your evidence qualifies.</p>
+        <p class="form-note">Checking sends these figures to Legal Fournier through your chat. No name or contact details are needed.</p>
+        <button type="button" id="income-submit" class="primary" disabled>Check income <span aria-hidden="true">→</span></button>
+      </form>
+      <div id="income-result" class="income-result" aria-live="polite" hidden></div>
+    </section>
+    <p id="error" class="error" role="alert" hidden></p>
+    <footer><span>General information. Your circumstances matter.</span><a href="https://legalfournier.com/en/" target="_blank" rel="noopener noreferrer">Visit Legal Fournier ↗</a></footer>
+  </main>
+  <script type="application/json" id="app-bootstrap">__LF_APP_BOOTSTRAP__</script>
+  <script type="module">__APP_JS__</script>
+</body>
+</html>

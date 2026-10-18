@@ -163,11 +163,17 @@ describe("Telemetry recovery, bounded storage and protocol accounting", () => {
     const summary = JSON.parse(await readFile(path.join(dir, `daily-${new Date().toISOString().slice(0, 10)}.json`), "utf8"));
     expect(summary.tools.__proto__.success).toBe(1);
   });
-  it("counts JSON-RPC validation failures as failures even with HTTP 200", async () => {
+  it.each(["legacy", "modern"])("counts %s JSON-RPC validation failures as failures even with HTTP 200", async era => {
     const directory = await temporaryTelemetry();
     const remote = await startRemoteServer({ host: "127.0.0.1", port: 0 });
     try {
-      const response = await originalFetch(remote.url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_visa_options", arguments: {} } }) });
+      const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json, text/event-stream" };
+      const params: Record<string, unknown> = { name: "get_visa_options", arguments: {} };
+      if (era === "modern") {
+        Object.assign(headers, { "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "get_visa_options" });
+        params._meta = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} };
+      }
+      const response = await originalFetch(remote.url, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params }) });
       const payload = await response.json(); expect(payload.result?.isError || payload.error).toBeTruthy();
     } finally { await remote.close(); }
     const summary = JSON.parse(await readFile(path.join(directory, `daily-${new Date().toISOString().slice(0, 10)}.json`), "utf8"));
