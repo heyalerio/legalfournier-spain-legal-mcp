@@ -55,7 +55,7 @@ Use Node 22.23.3 (see `.nvmrc`).
 ```sh
 npm ci --ignore-scripts
 npm run check
-python3 -m unittest discover -s scripts -p 'test_content_sync.py'
+python3 -m unittest discover -s scripts -p 'test_*.py'
 php -n ops/test-wordpress-idempotency.php
 npm audit --omit=dev
 npm run discovery:generate
@@ -109,5 +109,8 @@ domain key, then verify the public release:
 python3 scripts/smoke-readonly.py --base https://legalfournier.com --public-metadata --registry
 ```
 
-The daily `Public MCP release verification` workflow runs that same read-only
-check. Registry publishing credentials remain outside the application and CI.
+The daily `Public MCP release verification` workflow runs separate jobs for the
+live service and the external Registry listing. Registry checks use its direct
+latest-version lookup, with bounded retries for transient read failures; version
+or endpoint mismatches still fail. Registry publishing credentials remain
+outside the application and CI.
