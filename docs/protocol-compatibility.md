@@ -69,8 +69,11 @@ python3 scripts/smoke-readonly.py --base https://legalfournier.com --public-meta
 ```
 
 The scheduled GitHub workflow also checks for stale content, unavailable UI or
-skill resources, and mismatched application/registry versions. Its failures
-appear in GitHub Actions; it sends no client messages or contact requests.
+skill resources, and mismatched application/registry versions. Live-service and
+external Registry checks run as separate jobs, so an upstream outage is clearly
+identified. Registry reads use the direct latest-version endpoint with bounded
+retries; a mismatch remains a failure. Its failures appear in GitHub Actions;
+it sends no client messages or contact requests.
 
 Official references: [2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28/changelog),
 [SDK modern serving](https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28.html),

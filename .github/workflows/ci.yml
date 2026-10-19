@@ -4,12 +4,12 @@ on:
   pull_request:
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -18,6 +18,6 @@ jobs:
       - run: npm run discovery:generate && node scripts/check-release-metadata.mjs
       - name: Ensure committed discovery files match the build
         run: git diff --exit-code -- public/.well-known/mcp/server-card.json public/.well-known/openapi/spain-legal-api.json
-      - run: python3 -m unittest discover -s scripts -p 'test_content_sync.py'
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: php -n ops/test-wordpress-idempotency.php
       - run: npm audit --omit=dev --audit-level=moderate

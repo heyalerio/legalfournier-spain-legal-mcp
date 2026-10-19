@@ -17,12 +17,33 @@ def registry_read(call, url):
     for attempt in range(3):
         try:
             return call(url)
-        except (TimeoutError, ConnectionError):
-            if attempt == 2:
+        except (TimeoutError, ConnectionError, urllib.error.URLError) as error:
+            if isinstance(error, urllib.error.URLError) and not isinstance(error.reason, (TimeoutError, ConnectionError)):
                 raise
+            if attempt == 2:
+                raise RuntimeError('Official MCP Registry unavailable after three read attempts') from error
             delay = 2 ** (attempt + 1)
             print(f'Registry read interrupted; retrying in {delay}s.', flush=True)
             time.sleep(delay)
+
+
+def verify_registry(call, manifest, expected):
+    # The Registry provides a direct lookup. Global search loads unrelated
+    # discovery results and repeatedly timed out even when this record was live.
+    name = urllib.parse.quote(manifest['name'], safe='')
+    url = f'https://registry.modelcontextprotocol.io/v0.1/servers/{name}/versions/latest'
+    status, data, _ = registry_read(
+        lambda target: call(target, headers={'Accept': 'application/json'}, timeout=45), url)
+    assert status == 200, f'Official Registry lookup returned HTTP {status}'
+    assert isinstance(data, dict) and isinstance(data.get('server'), dict), 'Malformed official Registry response'
+    server = data['server']
+    meta = data.get('_meta')
+    official = meta.get('io.modelcontextprotocol.registry/official') if isinstance(meta, dict) else None
+    assert isinstance(official, dict) and official.get('isLatest') is True and official.get('status') == 'active', 'Registry entry is not the active latest release'
+    assert server.get('name') == manifest['name'], 'Registry server name mismatch'
+    assert server.get('version') == expected, f'Registry version drift: expected {expected}, got {server.get("version")}'
+    assert server.get('remotes') == manifest['remotes'], 'Registry endpoint drift'
+    print('official_registry_matches_release PASS', expected)
 
 
 def main():
@@ -31,6 +52,7 @@ def main():
     parser.add_argument('--expected-version')
     parser.add_argument('--public-metadata', action='store_true')
     parser.add_argument('--registry', action='store_true')
+    parser.add_argument('--registry-only', action='store_true', help='Check only the declared release in the official Registry')
     args = parser.parse_args()
     manifest = json.loads((Path(__file__).resolve().parents[1] / 'server.json').read_text())
     expected = args.expected_version or manifest['version']
@@ -40,14 +62,14 @@ def main():
     # Use the system CA store on macOS; certificate verification remains enabled.
     context = ssl.create_default_context(cafile='/etc/ssl/cert.pem') if Path('/etc/ssl/cert.pem').is_file() else ssl.create_default_context()
 
-    def call(path, body=None, headers=None, method=None):
+    def call(path, body=None, headers=None, method=None, timeout=25):
         url = path if path.startswith('https://') else base + path
         request = urllib.request.Request(
             url, data=None if body is None else json.dumps(body).encode(), method=method,
             headers={'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream',
                      'User-Agent': 'LegalFournier-ReleaseVerification/' + expected, **(headers or {})})
         try:
-            response = urllib.request.urlopen(request, timeout=25, context=context)
+            response = urllib.request.urlopen(request, timeout=timeout, context=context)
         except urllib.error.HTTPError as error:
             response = error
         with response:
@@ -60,6 +82,10 @@ def main():
             else:
                 data = json.loads(raw)
             return response.status, data, response.headers
+
+    if args.registry_only:
+        verify_registry(call, manifest, expected)
+        return
 
     def rpc(method, params=None, modern=True, headers=None):
         params = dict(params or {})
@@ -174,14 +200,7 @@ def main():
         assert status == 200 and api['info']['version'] == expected, ('OpenAPI', status)
         print('published_metadata PASS')
     if args.registry:
-        url = 'https://registry.modelcontextprotocol.io/v0.1/servers?' + urllib.parse.urlencode({'search': manifest['name'], 'limit': 100})
-        status, data, _ = registry_read(call, url)
-        latest = [entry['server'] for entry in data.get('servers', [])
-                  if entry.get('server', {}).get('name') == manifest['name']
-                  and entry.get('_meta', {}).get('io.modelcontextprotocol.registry/official', {}).get('isLatest')]
-        assert status == 200 and len(latest) == 1 and latest[0]['version'] == expected, ('Registry version drift', latest)
-        assert latest[0]['remotes'] == manifest['remotes'], 'Registry endpoint drift'
-        print('registry_matches_production PASS')
+        verify_registry(call, manifest, expected)
 
 
 if __name__ == '__main__':
